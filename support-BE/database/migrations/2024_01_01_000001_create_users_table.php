@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('avatar')->nullable();
             $table->string('initials', 3)->nullable();
             $table->string('color', 7)->default('#3B8BFF');
-            $table->boolean('is_active')->default("1");
+            $table->boolean('is_active')->default(1);
             $table->timestamp('last_login_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
