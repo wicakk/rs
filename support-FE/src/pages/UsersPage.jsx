@@ -278,7 +278,11 @@ function UsersPage() {
       const res = await fetch('/api/users', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(form) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.errors ? Object.values(data.errors).flat()[0] : data.message || 'Gagal menambahkan user')
-      setUsers(p => [...p, { ...(data.user ?? data.data ?? data), tickets: 0 }])
+      setUsers(p => [...p, { 
+        ...(data.user ?? data.data ?? data), 
+        is_active: true, 
+        tickets: 0 
+      }])
       setAddOpen(false); showToast('User berhasil ditambahkan ✓')
     } catch (err) { showToast(err.message, 'error') }
     finally { setActionLoading(false) }
