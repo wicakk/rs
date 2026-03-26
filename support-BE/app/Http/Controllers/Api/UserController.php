@@ -53,6 +53,7 @@ class UserController extends Controller
             'password' => Hash::make($data['password']),
             'initials' => $initials,
             'color'    => $colors[array_rand($colors)],
+            'is_active' => true,
         ]);
 
         return response()->json(['message' => 'User berhasil dibuat.', 'user' => $user], 201);
