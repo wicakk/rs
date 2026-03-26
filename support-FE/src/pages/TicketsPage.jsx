@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Plus, Search, SlidersHorizontal, RefreshCw, Tag,
   ChevronLeft, ChevronRight, Paperclip, X as XIcon,
-  FileText, ImageIcon, File,
+  FileText, ImageIcon, File, Trash2,
 } from 'lucide-react'
 import { useAuth } from '../context/AppContext'
 import { useTheme } from '../context/ThemeContext'
@@ -79,8 +79,6 @@ const EMPTY_TICKET = { title: '', category: '', priority: 'Medium', description:
 const MAX_FILES    = 5
 const MAX_MB       = 10
 
-// ── [TAMBAHAN] Konstanta untuk hardware ──────────────────────
-// Fallback jika API belum return data
 const ASSET_KATEGORI_FALLBACK = ['Laptop', 'Desktop', 'Printer', 'Monitor', 'Server', 'UPS', 'Switch', 'Other']
 const ASSET_STATUS_OPTIONS    = ['Active', 'Inactive', 'Under Repair', 'Disposed']
 const EMPTY_HARDWARE = {
@@ -88,7 +86,6 @@ const EMPTY_HARDWARE = {
   brand: '', model: '', serial_number: '', lokasi: '',
   pengguna: '', tgl_beli: '', harga_beli: '', garansi_sd: '', catatan: '',
 }
-// ─────────────────────────────────────────────────────────────
 
 const fileIcon = (file) => {
   if (file.type.startsWith('image/')) return <ImageIcon size={14} color="#3B8BFF" />
@@ -102,7 +99,6 @@ const formatBytes = (bytes) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-// ── [TAMBAHAN] Format SLA: "22 Mar 2026  12:38" (tanpa T dan Z) ──
 const fmtSla = (iso) => {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -115,10 +111,8 @@ const fmtSla = (iso) => {
 const NewTicketModal = ({ onClose, onSubmit, theme }) => {
   const { authFetch }             = useAuth()
   const { categoryNames, loading: catLoading } = useTicketCategories()
-  // ── [TAMBAHAN] Hook untuk data dari master ──
   const { categoryNames: assetCatNames, loading: assetCatLoading } = useAssetCategories()
   const { locationNames, loading: locLoading }                     = useLocations()
-  // ───────────────────────────────────────────
   const [form, setForm]           = useState(EMPTY_TICKET)
   const [files, setFiles]         = useState([])
   const [saving, setSaving]       = useState(false)
@@ -126,20 +120,16 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
   const [dragOver, setDragOver]   = useState(false)
   const fileInputRef              = useRef(null)
 
-  // ── [TAMBAHAN] State hardware ─────────────────────────────
   const [hardware, setHardware] = useState(EMPTY_HARDWARE)
   const isHardware = form.category === 'Hardware'
   const setHw = (k) => (e) => setHardware(h => ({ ...h, [k]: e.target.value }))
 
-  // Set default kategori aset & lokasi setelah data API masuk
   useEffect(() => {
     if (assetCatNames.length > 0 && !hardware.asset_kategori) {
       setHardware(h => ({ ...h, asset_kategori: assetCatNames[0] }))
     }
   }, [assetCatNames])
-  // ─────────────────────────────────────────────────────────
 
-  // Set default kategori setelah kategori selesai di-load
   useEffect(() => {
     if (categoryNames.length > 0 && !form.category) {
       setForm(f => ({ ...f, category: categoryNames[0] }))
@@ -183,7 +173,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
     if (Object.keys(e).length) { setErrors(e); return }
     setSaving(true)
     try {
-      // Selalu pakai FormData agar konsisten (baik ada file maupun tidak)
       const fd = new FormData()
       fd.append('title', form.title)
       fd.append('category', form.category)
@@ -191,7 +180,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
       fd.append('description', form.description)
       files.forEach(f => fd.append('attachments[]', f))
 
-      // ── [TAMBAHAN] Append hardware fields jika kategori Hardware ──
       if (isHardware) {
         const hw = {
           nama_aset:     hardware.nama_aset,
@@ -211,17 +199,10 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
           if (v !== null && v !== '') fd.append(`hardware[${k}]`, v)
         })
       }
-      // ─────────────────────────────────────────────────────────────
 
-      // ⚠️ JANGAN set Content-Type header — biarkan browser handle boundary
-      const res = await authFetch('/api/tickets', {
-        method: 'POST',
-        body: fd,
-        // headers sengaja tidak diset
-      })
+      const res = await authFetch('/api/tickets', { method: 'POST', body: fd })
 
       if (!res.ok) {
-        // Tampilkan error detail dari Laravel
         const errData = await res.json().catch(() => ({}))
         const msg = errData.message
           || Object.values(errData.errors ?? {}).flat().join(', ')
@@ -251,7 +232,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
     color: theme.textMuted, marginBottom: 6,
   }
 
-  // Fallback kategori jika API belum load
   const displayCategories = categoryNames.length > 0
     ? categoryNames
     : ['Network', 'Email', 'Printer', 'Software', 'Hardware', 'Server', 'Security', 'Others']
@@ -260,16 +240,13 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '12px', overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 18, width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.4)' }}>
 
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${theme.border}` }}>
           <p style={{ color: theme.text, fontWeight: 700, fontSize: 15, margin: 0 }}>Buat Tiket Baru</p>
           <button onClick={onClose} style={{ color: theme.textMuted, background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>✕</button>
         </div>
 
-        {/* Body */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px', overflowY: 'auto', maxHeight: '65vh' }}>
 
-          {/* Judul */}
           <div>
             <label style={labelStyle}>Judul <span style={{ color: theme.danger }}>*</span></label>
             <input style={{ ...inputStyle, borderColor: errors.title ? theme.danger : theme.border }}
@@ -277,12 +254,10 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
             {errors.title && <p style={{ color: theme.danger, fontSize: 11, marginTop: 4 }}>{errors.title}</p>}
           </div>
 
-          {/* Kategori + Prioritas */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={labelStyle}>Kategori</label>
-              <select style={inputStyle} value={form.category} onChange={set('category')}
-                disabled={catLoading}>
+              <select style={inputStyle} value={form.category} onChange={set('category')} disabled={catLoading}>
                 {catLoading
                   ? <option>Memuat...</option>
                   : displayCategories.map(c => <option key={c} value={c}>{c}</option>)
@@ -297,7 +272,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
             </div>
           </div>
 
-          {/* Deskripsi */}
           <div>
             <label style={labelStyle}>Deskripsi <span style={{ color: theme.danger }}>*</span></label>
             <textarea style={{ ...inputStyle, minHeight: 96, resize: 'vertical', borderColor: errors.description ? theme.danger : theme.border }}
@@ -305,7 +279,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
             {errors.description && <p style={{ color: theme.danger, fontSize: 11, marginTop: 4 }}>{errors.description}</p>}
           </div>
 
-          {/* ── [TAMBAHAN] Hardware Section ───────────────────────────────── */}
           {isHardware && (
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 12,
@@ -314,7 +287,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
               background: theme.accentSoft ?? 'rgba(59,130,246,0.04)',
               animation: 'hwSlideDown 0.22s ease',
             }}>
-              {/* Header section */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={theme.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
@@ -324,13 +296,11 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
                 </span>
               </div>
 
-              {/* Nama Aset */}
               <div>
                 <label style={labelStyle}>Nama Aset</label>
                 <input style={inputStyle} value={hardware.nama_aset} onChange={setHw('nama_aset')} placeholder="cth: Dell Latitude 5420" />
               </div>
 
-              {/* Kategori Aset + Status */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Kategori Aset</label>
@@ -349,7 +319,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
                 </div>
               </div>
 
-              {/* Brand + Model */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Brand</label>
@@ -361,29 +330,15 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
                 </div>
               </div>
 
-              {/* Serial Number + Lokasi */}
-              
-                <div>
-                  <label style={labelStyle}>Serial Number</label>
-                  <input style={inputStyle} value={hardware.serial_number} onChange={setHw('serial_number')} placeholder="SN-XXXXXXXX" />
-                </div>
-                <div>
-                  <label style={labelStyle}>Lokasi</label>
-                  <input style={inputStyle} value={hardware.lokasi} onChange={setHw('lokasi')} placeholder="Lokasi Aset" />
-                </div>
-                {/* <div>
-                  <label style={labelStyle}>Lokasi</label>
-                  <select style={inputStyle} value={hardware.lokasi} onChange={setHw('lokasi')} disabled={locLoading}>
-                    <option value="">-- Pilih Lokasi --</option>
-                    {locLoading
-                      ? <option>Memuat...</option>
-                      : locationNames.map(l => <option key={l}>{l}</option>)
-                    }
-                  </select>
-                </div> */}
-              
+              <div>
+                <label style={labelStyle}>Serial Number</label>
+                <input style={inputStyle} value={hardware.serial_number} onChange={setHw('serial_number')} placeholder="SN-XXXXXXXX" />
+              </div>
+              <div>
+                <label style={labelStyle}>Lokasi</label>
+                <input style={inputStyle} value={hardware.lokasi} onChange={setHw('lokasi')} placeholder="Lokasi Aset" />
+              </div>
 
-              {/* Pengguna + Tgl Beli */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Pengguna <span style={{ color: theme.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(opsional)</span></label>
@@ -395,28 +350,23 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
                 </div>
               </div>
 
-              {/* Harga Beli */}
               <div>
                 <label style={labelStyle}>Harga Beli (Rp)</label>
                 <input style={inputStyle} type="number" min="0" value={hardware.harga_beli} onChange={setHw('harga_beli')} placeholder="15000000" />
               </div>
 
-              {/* Garansi S/D */}
               <div>
                 <label style={labelStyle}>Garansi S/D</label>
                 <input style={inputStyle} type="date" value={hardware.garansi_sd} onChange={setHw('garansi_sd')} />
               </div>
 
-              {/* Catatan */}
               <div>
                 <label style={labelStyle}>Catatan <span style={{ color: theme.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(opsional)</span></label>
                 <textarea style={inputStyle} value={hardware.catatan} onChange={setHw('catatan')} placeholder="(opsional)" />
               </div>
             </div>
           )}
-          {/* ── [END TAMBAHAN] ────────────────────────────────────────────── */}
 
-          {/* Upload */}
           <div>
             <label style={labelStyle}>
               Lampiran <span style={{ color: theme.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(maks {MAX_FILES} file · {MAX_MB}MB)</span>
@@ -457,7 +407,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
           )}
         </div>
 
-        {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderTop: `1px solid ${theme.border}`, gap: 8 }}>
           <span style={{ fontSize: 11, color: theme.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {files.length > 0 ? `${files.length} file terlampir` : 'Belum ada lampiran'}
@@ -477,6 +426,36 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
     </div>
   )
 }
+
+// ─── DeleteTicketModal ────────────────────────────────────────
+const DeleteTicketModal = ({ ticket, onClose, onConfirm, loading, theme }) => (
+  <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 12 }}>
+    <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, width: '100%', maxWidth: 380, boxShadow: '0 25px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
+      <div style={{ padding: '24px 20px', textAlign: 'center' }}>
+        <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <Trash2 size={22} color="#EF4444" />
+        </div>
+        <h3 style={{ color: theme.text, fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Hapus Tiket?</h3>
+        <p style={{ color: theme.textMuted, fontSize: 12, marginBottom: 4 }}>
+          <strong style={{ color: theme.text }}>{ticket.ticket_number ?? `#${ticket.id}`}</strong>
+        </p>
+        <p style={{ color: theme.textMuted, fontSize: 12, marginBottom: 20 }}>
+          "{ticket.title}" akan dihapus permanen dan tidak bisa dikembalikan.
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+          <button onClick={onClose} disabled={loading}
+            style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.textMuted, fontSize: 12, cursor: 'pointer' }}>
+            Batal
+          </button>
+          <button onClick={() => onConfirm(ticket.id)} disabled={loading}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 8, background: '#DC2626', color: '#fff', border: 'none', fontSize: 12, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+            <Trash2 size={12} />{loading ? 'Menghapus...' : 'Ya, Hapus'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)
 
 // ─── TicketCard (mobile) ──────────────────────────────────────
 const TicketCard = ({ t, onClick, theme }) => (
@@ -512,15 +491,17 @@ const TicketsPage = () => {
   const navigate      = useNavigate()
   const { T: theme }  = useTheme()
 
-  const [tickets,     setTickets]     = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [error,       setError]       = useState(null)
-  const [showNew,     setShowNew]     = useState(false)
-  const [query,       setQuery]       = useState('')
-  const [activeTab,   setActiveTab]   = useState('All')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [lastPage,    setLastPage]    = useState(1)
-  const [total,       setTotal]       = useState(0)
+  const [tickets,       setTickets]       = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [error,         setError]         = useState(null)
+  const [showNew,       setShowNew]       = useState(false)
+  const [query,         setQuery]         = useState('')
+  const [activeTab,     setActiveTab]     = useState('All')
+  const [currentPage,   setCurrentPage]   = useState(1)
+  const [lastPage,      setLastPage]      = useState(1)
+  const [total,         setTotal]         = useState(0)
+  const [deleteTicket,  setDeleteTicket]  = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const PER_PAGE    = 20
   const STATUS_TABS = ['All', 'Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed']
@@ -552,6 +533,20 @@ const TicketsPage = () => {
     if (page === currentPage) return
     setCurrentPage(page); fetchTickets(page)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleDelete = async (id) => {
+    setDeleteLoading(true)
+    try {
+      const res = await authFetch(`/api/tickets/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Gagal menghapus tiket')
+      setDeleteTicket(null)
+      fetchTickets(currentPage)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   if (error) return (
@@ -630,12 +625,22 @@ const TicketsPage = () => {
                       <td style={{ padding: '12px 16px', fontSize: 12, color: theme.textMuted, whiteSpace: 'nowrap' }}>{t.assignee?.name ?? 'Unassigned'}</td>
                       <td style={{ padding: '12px 16px', fontSize: 11, color: theme.textMuted, whiteSpace: 'nowrap' }}>{fmtSla(t.sla_deadline ?? t.sla)}</td>
                       <td style={{ padding: '12px 16px' }}>
-                        <button onClick={e => { e.stopPropagation(); navigate(`/tickets/${t.id}`) }}
-                          style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, color: theme.accent, border: `1px solid ${theme.borderAccent}`, borderRadius: 6, background: theme.accentSoft, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                          onMouseEnter={e => e.currentTarget.style.background = theme.accentGlow}
-                          onMouseLeave={e => e.currentTarget.style.background = theme.accentSoft}>
-                          Detail
-                        </button>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button onClick={e => { e.stopPropagation(); navigate(`/tickets/${t.id}`) }}
+                            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, color: theme.accent, border: `1px solid ${theme.borderAccent}`, borderRadius: 6, background: theme.accentSoft, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            onMouseEnter={e => e.currentTarget.style.background = theme.accentGlow}
+                            onMouseLeave={e => e.currentTarget.style.background = theme.accentSoft}>
+                            Detail
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setDeleteTicket(t) }}
+                            title="Hapus tiket"
+                            style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: '#EF4444', cursor: 'pointer', flexShrink: 0 }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -655,7 +660,19 @@ const TicketsPage = () => {
         @keyframes hwSlideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
       `}</style>
 
-      {showNew && <NewTicketModal theme={theme} onClose={() => setShowNew(false)} onSubmit={() => { setShowNew(false); fetchTickets(1) }} />}
+      {showNew && (
+        <NewTicketModal theme={theme} onClose={() => setShowNew(false)} onSubmit={() => { setShowNew(false); fetchTickets(1) }} />
+      )}
+
+      {deleteTicket && (
+        <DeleteTicketModal
+          ticket={deleteTicket}
+          onClose={() => !deleteLoading && setDeleteTicket(null)}
+          onConfirm={handleDelete}
+          loading={deleteLoading}
+          theme={theme}
+        />
+      )}
     </div>
   )
 }
