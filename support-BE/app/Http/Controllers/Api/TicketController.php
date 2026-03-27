@@ -36,7 +36,7 @@ class TicketController extends Controller
             );
         }
 
-        $tickets = $query->paginate($request->per_page ?? 15);
+        $tickets = $query->paginate($request->per_page ?? 10);
 
         return response()->json($tickets);
     }
