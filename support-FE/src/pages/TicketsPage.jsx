@@ -503,7 +503,7 @@ const TicketsPage = () => {
   const [deleteTicket,  setDeleteTicket]  = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
-  const PER_PAGE    = 20
+  const PER_PAGE    = 10
   const STATUS_TABS = ['All', 'Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed']
 
   const fetchTickets = useCallback(async (page = 1) => {
