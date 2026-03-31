@@ -8,10 +8,28 @@ use App\Models\TicketHardwareAsset;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class TicketController extends Controller
 {
+    /**
+     * Ambil daftar kategori tiket dari DB secara dinamis.
+     * Sesuaikan nama tabel/kolom dengan struktur DB kamu.
+     */
+    private function validCategories(): array
+    {
+        try {
+            $fromDb = DB::table('ticket_categories')->pluck('name')->toArray();
+            if (!empty($fromDb)) return $fromDb;
+        } catch (\Exception $e) {
+            // fallback jika tabel belum ada
+        }
+
+        // Fallback default
+        return ['Hardware', 'Software', 'Network', 'Email', 'Printer', 'Server', 'Security', 'Others'];
+    }
+
     /**
      * GET /api/tickets
      */
@@ -49,13 +67,14 @@ class TicketController extends Controller
         $data = $request->validate([
             'title'           => 'required|string|max:255',
             'description'     => 'nullable|string',
-            'category'        => ['required', Rule::in(['Hardware','Software','Network','Email','Printer','Server','Security','Others'])],
-            'priority'        => ['required', Rule::in(['Low','Medium','High','Critical'])],
+            // ✅ FIX: validasi kategori dinamis dari DB, bukan hardcoded
+            'category'        => ['required', Rule::in($this->validCategories())],
+            'priority'        => ['required', Rule::in(['Low', 'Medium', 'High', 'Critical'])],
             'department'      => 'nullable|string|max:100',
             'attachments'     => 'nullable|array|max:5',
             'attachments.*'   => 'file|max:10240|mimes:jpg,jpeg,png,pdf,doc,docx,xls,xlsx,zip',
 
-            // ── Hardware asset fields (hanya wajib jika kategori Hardware) ──
+            // ── Hardware asset fields ──
             'hardware.nama_aset'     => 'nullable|string|max:255',
             'hardware.kategori'      => 'nullable|string|max:100',
             'hardware.status'        => 'nullable|string|max:50',
@@ -80,7 +99,7 @@ class TicketController extends Controller
             'status'       => 'Open',
         ]);
 
-        // ── Simpan hardware asset jika kategori Hardware ──────────────────
+        // ── Simpan hardware asset jika kategori Hardware ──
         if ($data['category'] === 'Hardware' && $request->filled('hardware')) {
             $hw = $request->input('hardware', []);
             $ticket->hardwareAsset()->create([
@@ -99,7 +118,7 @@ class TicketController extends Controller
             ]);
         }
 
-        // ── Handle attachments ─────────────────────────────────────────────
+        // ── Handle attachments ──
         if ($request->hasFile('attachments')) {
             foreach ($request->file('attachments') as $file) {
                 $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
@@ -133,7 +152,7 @@ class TicketController extends Controller
                 'assignee:id,name,initials,color',
                 'comments.user:id,name,initials,color,role',
                 'attachments',
-                'hardwareAsset', // ← sertakan hardware asset
+                'hardwareAsset',
             ])
         );
     }
@@ -146,9 +165,10 @@ class TicketController extends Controller
         $data = $request->validate([
             'title'       => 'sometimes|string|max:255',
             'description' => 'sometimes|nullable|string',
-            'category'    => ['sometimes', Rule::in(['Hardware','Software','Network','Email','Printer','Server','Security','Others'])],
-            'priority'    => ['sometimes', Rule::in(['Low','Medium','High','Critical'])],
-            'status'      => ['sometimes', Rule::in(['Open','Assigned','In Progress','Waiting User','Resolved','Closed'])],
+            // ✅ FIX: validasi kategori dinamis dari DB, bukan hardcoded
+            'category'    => ['sometimes', Rule::in($this->validCategories())],
+            'priority'    => ['sometimes', Rule::in(['Low', 'Medium', 'High', 'Critical'])],
+            'status'      => ['sometimes', Rule::in(['Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed'])],
             'department'  => 'sometimes|nullable|string|max:100',
 
             // Update hardware jika ada
@@ -183,7 +203,7 @@ class TicketController extends Controller
         ]);
     }
 
-    // ── Semua method lain tetap sama ──────────────────────────────────────────
+    // ── Method lain tetap sama ──────────────────────────────────────────────
 
     public function destroy(Ticket $ticket): JsonResponse
     {
