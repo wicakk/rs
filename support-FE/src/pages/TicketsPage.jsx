@@ -237,7 +237,8 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
     : ['Network', 'Email', 'Printer', 'Software', 'Hardware', 'Server', 'Security', 'Others']
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '12px', overflowY: 'auto' }}>
+    // ✅ FIX: Hapus onClick={onClose} dari overlay — klik di luar modal tidak menutup
+    <div style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '12px', overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 18, width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.4)' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${theme.border}` }}>
@@ -429,7 +430,8 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
 
 // ─── DeleteTicketModal ────────────────────────────────────────
 const DeleteTicketModal = ({ ticket, onClose, onConfirm, loading, theme }) => (
-  <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 12 }}>
+  // ✅ FIX: Hapus onClick={onClose} dari overlay — klik di luar modal tidak menutup
+  <div style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 12 }}>
     <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, width: '100%', maxWidth: 380, boxShadow: '0 25px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
       <div style={{ padding: '24px 20px', textAlign: 'center' }}>
         <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
@@ -506,6 +508,23 @@ const TicketsPage = () => {
   const PER_PAGE    = 10
   const STATUS_TABS = ['All', 'Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed']
 
+  // ✅ FIX: Blokir navigasi browser (back/forward) saat modal terbuka
+  useEffect(() => {
+    const isModalOpen = showNew || !!deleteTicket
+    if (!isModalOpen) return
+
+    // Push state dummy agar back button tidak langsung navigasi keluar
+    window.history.pushState(null, '', window.location.href)
+
+    const handlePopState = () => {
+      // Kembalikan state agar tetap di halaman ini
+      window.history.pushState(null, '', window.location.href)
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [showNew, deleteTicket])
+
   const fetchTickets = useCallback(async (page = 1) => {
     setLoading(true); setError(null)
     try {
@@ -557,6 +576,8 @@ const TicketsPage = () => {
     </div>
   )
 
+  const isModalOpen = showNew || !!deleteTicket
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <PageHeader
@@ -585,6 +606,16 @@ const TicketsPage = () => {
       </div>
 
       <FilterTabs tabs={STATUS_TABS} active={activeTab} onChange={t => setActiveTab(t)} />
+
+      {/* ✅ FIX: Overlay transparan untuk blokir klik sidebar/navigasi saat modal terbuka */}
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 999,
+          cursor: 'not-allowed',
+        }} />
+      )}
 
       <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
