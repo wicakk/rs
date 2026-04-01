@@ -346,34 +346,34 @@ class ReportController extends Controller
         $no         = 1;
 
         // Baris 1: Total semua tiket per hari
-        $rowTotalAll = 0;
-        $cellsAll    = '';
-        for ($d = 1; $d <= 31; $d++) {
-            if ($d > $daysInMonth) { $cellsAll .= '<td class="cell-off"></td>'; continue; }
-            $dow  = (int) date('w', mktime(0, 0, 0, $month, $d, $year));
-            $val  = $ticketData[$d]['__total'] ?? 0;
-            $rowTotalAll      += $val;
-            $colTotals[$d]    += $val;
-            $grandLkh         += $val;
+        // $rowTotalAll = 0;
+        // $cellsAll    = '';
+        // for ($d = 1; $d <= 31; $d++) {
+        //     if ($d > $daysInMonth) { $cellsAll .= '<td class="cell-off"></td>'; continue; }
+        //     $dow  = (int) date('w', mktime(0, 0, 0, $month, $d, $year));
+        //     $val  = $ticketData[$d]['__total'] ?? 0;
+        //     $rowTotalAll      += $val;
+        //     $colTotals[$d]    += $val;
+        //     $grandLkh         += $val;
 
-            if ($dow === 0)     $cls = 'cell-wknd';
-            elseif ($val >= 10) $cls = 'cell-crit';
-            elseif ($val >= 5)  $cls = 'cell-high';
-            elseif ($val > 0)   $cls = 'cell-ticket';
-            else                $cls = '';
+        //     if ($dow === 0)     $cls = 'cell-wknd';
+        //     elseif ($val >= 10) $cls = 'cell-crit';
+        //     elseif ($val >= 5)  $cls = 'cell-high';
+        //     elseif ($val > 0)   $cls = 'cell-ticket';
+        //     else                $cls = '';
 
-            $display  = $val > 0 ? $val : '';
-            $cellsAll .= "<td class=\"{$cls}\">{$display}</td>";
-        }
+        //     $display  = $val > 0 ? $val : '';
+        //     $cellsAll .= "<td class=\"{$cls}\">{$display}</td>";
+        // }
 
-        $bodyRows .= "
-        <tr>
-            <td class='td-no'>{$no}</td>
-            <td class='td-uraian'><strong>Total Semua Tiket</strong> <span class='auto-tag'>auto: total</span></td>
-            {$cellsAll}
-            <td class='td-jumlah' style='color:#1e40af'>{$rowTotalAll}</td>
-        </tr>";
-        $no++;
+        // $bodyRows .= "
+        // <tr>
+        //     <td class='td-no'>{$no}</td>
+        //     <td class='td-uraian'><strong>Total Semua Tiket</strong> <span class='auto-tag'>auto: total</span></td>
+        //     {$cellsAll}
+        //     <td class='td-jumlah' style='color:#1e40af'>{$rowTotalAll}</td>
+        // </tr>";
+        // $no++;
 
         // Baris per kategori
         foreach ($categories as $cat) {
