@@ -15,7 +15,6 @@ class TicketController extends Controller
 {
     /**
      * Ambil daftar kategori tiket dari DB secara dinamis.
-     * Sesuaikan nama tabel/kolom dengan struktur DB kamu.
      */
     private function validCategories(): array
     {
@@ -26,12 +25,12 @@ class TicketController extends Controller
             // fallback jika tabel belum ada
         }
 
-        // Fallback default
         return ['Hardware', 'Software', 'Network', 'Email', 'Printer', 'Server', 'Security', 'Others'];
     }
 
     /**
      * GET /api/tickets
+     * Otomatis filter berdasarkan role lewat scopeForUser di model Ticket.
      */
     public function index(Request $request): JsonResponse
     {
@@ -48,9 +47,9 @@ class TicketController extends Controller
         if ($request->filled('search')) {
             $s = $request->search;
             $query->where(fn($q) =>
-                $q->where('title',         'like', "%$s%")
-                  ->orWhere('ticket_number','like', "%$s%")
-                  ->orWhere('description',  'like', "%$s%")
+                $q->where('title',          'like', "%$s%")
+                  ->orWhere('ticket_number', 'like', "%$s%")
+                  ->orWhere('description',   'like', "%$s%")
             );
         }
 
@@ -67,14 +66,12 @@ class TicketController extends Controller
         $data = $request->validate([
             'title'           => 'required|string|max:255',
             'description'     => 'nullable|string',
-            // ✅ FIX: validasi kategori dinamis dari DB, bukan hardcoded
             'category'        => ['required', Rule::in($this->validCategories())],
             'priority'        => ['required', Rule::in(['Low', 'Medium', 'High', 'Critical'])],
             'department'      => 'nullable|string|max:100',
             'attachments'     => 'nullable|array|max:5',
             'attachments.*'   => 'file|max:10240|mimes:jpg,jpeg,png,pdf,doc,docx,xls,xlsx,zip',
 
-            // ── Hardware asset fields ──
             'hardware.nama_aset'     => 'nullable|string|max:255',
             'hardware.kategori'      => 'nullable|string|max:100',
             'hardware.status'        => 'nullable|string|max:50',
@@ -99,7 +96,7 @@ class TicketController extends Controller
             'status'       => 'Open',
         ]);
 
-        // ── Simpan hardware asset jika kategori Hardware ──
+        // Simpan hardware asset jika kategori Hardware
         if ($data['category'] === 'Hardware' && $request->filled('hardware')) {
             $hw = $request->input('hardware', []);
             $ticket->hardwareAsset()->create([
@@ -118,7 +115,7 @@ class TicketController extends Controller
             ]);
         }
 
-        // ── Handle attachments ──
+        // Handle attachments
         if ($request->hasFile('attachments')) {
             foreach ($request->file('attachments') as $file) {
                 $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
@@ -144,8 +141,25 @@ class TicketController extends Controller
     /**
      * GET /api/tickets/{ticket}
      */
-    public function show(Ticket $ticket): JsonResponse
+    public function show(Request $request, Ticket $ticket): JsonResponse
     {
+        // Otorisasi akses berdasarkan role
+        $user = $request->user();
+
+        if (!in_array($user->role, ['admin', 'super_admin', 'manager', 'manager_it'])) {
+            if ($user->role === 'it_support') {
+                // it_support hanya boleh lihat tiket miliknya atau yang unassigned
+                if ($ticket->assigned_to !== null && $ticket->assigned_to !== $user->id) {
+                    return response()->json(['message' => 'Akses ditolak.'], 403);
+                }
+            } else {
+                // User biasa hanya boleh lihat tiket miliknya
+                if ($ticket->requester_id !== $user->id) {
+                    return response()->json(['message' => 'Akses ditolak.'], 403);
+                }
+            }
+        }
+
         return response()->json(
             $ticket->load([
                 'requester:id,name,initials,color,department',
@@ -165,13 +179,11 @@ class TicketController extends Controller
         $data = $request->validate([
             'title'       => 'sometimes|string|max:255',
             'description' => 'sometimes|nullable|string',
-            // ✅ FIX: validasi kategori dinamis dari DB, bukan hardcoded
             'category'    => ['sometimes', Rule::in($this->validCategories())],
             'priority'    => ['sometimes', Rule::in(['Low', 'Medium', 'High', 'Critical'])],
             'status'      => ['sometimes', Rule::in(['Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed'])],
             'department'  => 'sometimes|nullable|string|max:100',
 
-            // Update hardware jika ada
             'hardware.nama_aset'     => 'nullable|string|max:255',
             'hardware.kategori'      => 'nullable|string|max:100',
             'hardware.status'        => 'nullable|string|max:50',
@@ -188,7 +200,6 @@ class TicketController extends Controller
 
         $ticket->update($data);
 
-        // Update hardware asset jika dikirim
         if ($request->filled('hardware')) {
             $hw = $request->input('hardware', []);
             $ticket->hardwareAsset()->updateOrCreate(
@@ -202,8 +213,6 @@ class TicketController extends Controller
             'ticket'  => $ticket->fresh(['hardwareAsset']),
         ]);
     }
-
-    // ── Method lain tetap sama ──────────────────────────────────────────────
 
     public function destroy(Ticket $ticket): JsonResponse
     {
@@ -263,9 +272,9 @@ class TicketController extends Controller
     public function uploadAttachment(Request $request, Ticket $ticket): JsonResponse
     {
         $request->validate(['file' => 'required|file|max:10240|mimes:jpg,jpeg,png,pdf,doc,docx,xls,xlsx,zip']);
-        $file      = $request->file('file');
-        $filename  = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
-        $path      = $file->storeAs("tickets/{$ticket->id}", $filename, 'public');
+        $file       = $request->file('file');
+        $filename   = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
+        $path       = $file->storeAs("tickets/{$ticket->id}", $filename, 'public');
         $attachment = $ticket->attachments()->create([
             'user_id'       => $request->user()->id,
             'filename'      => $filename,
