@@ -12,6 +12,9 @@ const fmtRp = (val) => !val ? '—' : new Intl.NumberFormat('id-ID', { style: 'c
 
 const fileUrl = (a) => a?.url || (a?.path ? `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/storage/${a.path}` : null)
 
+// Role yang boleh di-assign tiket
+const ASSIGNABLE_ROLES = ['it_support', 'manager_it']
+
 // ─── COMPONENTS ─────────────────────────────────────────────────
 
 const Breadcrumb = ({ navigate, ticket, onRefresh, theme }) => (
@@ -50,6 +53,13 @@ const ActionButton = ({ icon: Icon, label, onClick, disabled, theme, color = 'bl
   )
 }
 
+const ROLE_LABEL = {
+  it_support:  'IT Support',
+  manager_it:  'Manager IT',
+  admin:       'Admin',
+  super_admin: 'Super Admin',
+}
+
 const AssignDropdown = ({ agents, current, onAssign, assigning, theme }) => {
   const [open, setOpen] = useState(false), [search, setSearch] = useState(''), ref = useRef(null)
   useEffect(() => {
@@ -58,6 +68,14 @@ const AssignDropdown = ({ agents, current, onAssign, assigning, theme }) => {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
   const filtered = agents.filter(a => a.name.toLowerCase().includes(search.toLowerCase()) || (a.email ?? '').toLowerCase().includes(search.toLowerCase()))
+
+  // Kelompokkan by role untuk tampilan yang lebih rapi
+  const grouped = ASSIGNABLE_ROLES.reduce((acc, role) => {
+    const members = filtered.filter(a => (a.role ?? '').toLowerCase() === role)
+    if (members.length > 0) acc[role] = members
+    return acc
+  }, {})
+
   return (
     <div ref={ref} className="relative w-full">
       <button onClick={() => setOpen(o => !o)} disabled={assigning} className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg transition" style={{ border: `1px solid ${assigning ? theme.border : 'rgba(245,158,11,0.22)'}`, fontSize: 12, fontWeight: 500, color: assigning ? theme.textMuted : theme.warning, background: assigning ? 'transparent' : 'rgba(245,158,11,0.10)', cursor: assigning ? 'not-allowed' : 'pointer', opacity: assigning ? 0.5 : 1 }}>
@@ -71,7 +89,7 @@ const AssignDropdown = ({ agents, current, onAssign, assigning, theme }) => {
             <Search size={14} style={{ color: theme.textMuted, flexShrink: 0 }} />
             <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari agent..." className="flex-1 bg-transparent text-xs outline-none" style={{ color: theme.text }} />
           </div>
-          <div className="max-h-48 overflow-y-auto">
+          <div className="max-h-56 overflow-y-auto">
             {current && (
               <button onClick={() => { onAssign(null); setOpen(false); setSearch('') }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left text-xs transition border-b" style={{ color: theme.danger, borderColor: theme.border, background: 'transparent' }} onMouseEnter={(e) => e.target.style.background = 'rgba(239,68,68,0.08)'} onMouseLeave={(e) => e.target.style.background = 'transparent'}>
                 <XCircle size={14} /> Hapus assignment
@@ -79,19 +97,29 @@ const AssignDropdown = ({ agents, current, onAssign, assigning, theme }) => {
             )}
             {filtered.length === 0 ? (
               <p className="text-xs px-3 py-4 text-center" style={{ color: theme.textMuted }}>Agent tidak ditemukan.</p>
-            ) : filtered.map(agent => {
-              const isCurrent = current === agent.name
-              return (
-                <button key={agent.id} onClick={() => { onAssign(agent.id); setOpen(false); setSearch('') }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left text-xs transition" style={{ background: isCurrent ? 'rgba(245,158,11,0.10)' : 'transparent', color: isCurrent ? theme.warning : theme.textSub }} onMouseEnter={(e) => !isCurrent && (e.target.style.background = theme.surfaceHover)} onMouseLeave={(e) => !isCurrent && (e.target.style.background = 'transparent')}>
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ background: theme.accent }}>{agent.name.charAt(0).toUpperCase()}</div>
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-xs font-medium truncate">{agent.name}</span>
-                    {agent.email && <span className="text-[10px] truncate" style={{ color: theme.textMuted }}>{agent.email}</span>}
+            ) : (
+              Object.entries(grouped).map(([role, members]) => (
+                <div key={role}>
+                  {/* Role group header */}
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: theme.surfaceAlt, color: theme.textMuted, borderBottom: `1px solid ${theme.border}` }}>
+                    {ROLE_LABEL[role] ?? role}
                   </div>
-                  {isCurrent && <Check size={14} style={{ color: theme.warning, marginLeft: 'auto' }} />}
-                </button>
-              )
-            })}
+                  {members.map(agent => {
+                    const isCurrent = current === agent.name
+                    return (
+                      <button key={agent.id} onClick={() => { onAssign(agent.id); setOpen(false); setSearch('') }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left text-xs transition" style={{ background: isCurrent ? 'rgba(245,158,11,0.10)' : 'transparent', color: isCurrent ? theme.warning : theme.textSub }} onMouseEnter={(e) => !isCurrent && (e.target.style.background = theme.surfaceHover)} onMouseLeave={(e) => !isCurrent && (e.target.style.background = 'transparent')}>
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ background: agent.color ?? theme.accent }}>{agent.name.charAt(0).toUpperCase()}</div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-xs font-medium truncate">{agent.name}</span>
+                          {agent.email && <span className="text-[10px] truncate" style={{ color: theme.textMuted }}>{agent.email}</span>}
+                        </div>
+                        {isCurrent && <Check size={14} style={{ color: theme.warning, marginLeft: 'auto' }} />}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -115,7 +143,6 @@ const TicketTitleCard = ({ ticket, theme }) => (
     {ticket.description && (
       <p className="text-sm leading-relaxed border-t pt-3 mt-1 whitespace-pre-wrap break-words" style={{ color: theme.text, borderColor: theme.border }}>{ticket.description}</p>
     )}
-    {/* ✅ Hanya tampilkan attachment yang tidak punya comment_id (lampiran tiket asli) */}
     {ticket.attachments?.filter(a => !a.comment_id).length > 0 && (
       <div className="flex flex-wrap gap-2 pt-2 border-t" style={{ borderColor: theme.border }}>
         {ticket.attachments.filter(a => !a.comment_id).map((a, i) => {
@@ -131,22 +158,12 @@ const TicketTitleCard = ({ ticket, theme }) => (
       </div>
     )}
 
-    {/* ── [TAMBAHAN] Hardware Asset Card ── */}
     {ticket.category === 'Hardware' && ticket.hardware_asset && (
-      <div style={{
-        borderTop: `1px solid ${theme.border}`,
-        paddingTop: 14, marginTop: 2,
-        display: 'flex', flexDirection: 'column', gap: 12,
-      }}>
-        {/* Header */}
+      <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 14, marginTop: 2, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Monitor size={13} style={{ color: theme.accent }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: theme.accent, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Informasi Aset Hardware
-          </span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: theme.accent, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Informasi Aset Hardware</span>
         </div>
-
-        {/* Grid info */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '10px 20px' }}>
           {[
             { label: 'Nama Aset',      value: ticket.hardware_asset.nama_aset },
@@ -166,23 +183,14 @@ const TicketTitleCard = ({ ticket, theme }) => (
             </div>
           ) : null)}
         </div>
-
-        {/* Status badge */}
         {ticket.hardware_asset.status && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: theme.textMuted }}>Status Aset</span>
-            <span style={{
-              fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 99,
-              background: ticket.hardware_asset.status === 'Active' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)',
-              color: ticket.hardware_asset.status === 'Active' ? theme.success : theme.danger,
-              border: `1px solid ${ticket.hardware_asset.status === 'Active' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
-            }}>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 99, background: ticket.hardware_asset.status === 'Active' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)', color: ticket.hardware_asset.status === 'Active' ? theme.success : theme.danger, border: `1px solid ${ticket.hardware_asset.status === 'Active' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
               {ticket.hardware_asset.status}
             </span>
           </div>
         )}
-
-        {/* Catatan */}
         {ticket.hardware_asset.catatan && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: theme.textMuted }}>Catatan</span>
@@ -191,11 +199,9 @@ const TicketTitleCard = ({ ticket, theme }) => (
         )}
       </div>
     )}
-    {/* ── [END TAMBAHAN] ── */}
   </div>
 )
 
-// ✅ Comment item — tampilkan attachments di dalam bubble komentar
 const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting }) => {
   const displayName = comment.user?.name ?? comment.user_name ?? comment.author ?? (comment.user_id ? `User #${comment.user_id}` : 'Unknown')
   const initials = displayName.charAt(0).toUpperCase()
@@ -206,9 +212,7 @@ const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting })
 
   return (
     <div className="px-5 py-3.5 flex gap-3" style={{ background: index % 2 === 0 ? theme.surface : theme.surfaceAlt }}>
-      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: avatarColor }}>
-        {initials}
-      </div>
+      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5" style={{ background: avatarColor }}>{initials}</div>
       <div className="flex flex-col gap-1 flex-1 min-w-0">
         <div className="flex items-baseline gap-2 flex-wrap justify-between">
           <div className="flex items-baseline gap-2 flex-wrap">
@@ -224,14 +228,11 @@ const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting })
             </button>
           )}
         </div>
-
         {bodyText ? (
           <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" style={{ color: theme.text }}>{bodyText}</p>
         ) : (
           <p className="text-sm italic" style={{ color: theme.textMuted }}>— (komentar kosong)</p>
         )}
-
-        {/* ✅ Attachment tampil di dalam bubble komentar */}
         {comment.attachments?.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t" style={{ borderColor: theme.border }}>
             {comment.attachments.map((a, idx) => {
@@ -311,7 +312,9 @@ const DetailInfoSidebar = ({ ticket, currentUser, agents, onAssign, assigning, o
         <InfoRow label="Assigned To" theme={theme}>
           <span className="flex items-center gap-1.5">
             <UserCheck size={14} style={{ color: theme.textMuted }} />
-            {ticket.assignee?.name ? <span style={{ color: theme.warning, fontWeight: 500 }}>{ticket.assignee.name}</span> : <span className="italic text-xs" style={{ color: theme.textMuted }}>Belum di-assign</span>}
+            {ticket.assignee?.name
+              ? <span style={{ color: theme.warning, fontWeight: 500 }}>{ticket.assignee.name}</span>
+              : <span className="italic text-xs" style={{ color: theme.textMuted }}>Belum di-assign</span>}
           </span>
         </InfoRow>
         <InfoRow label="Kategori" theme={theme}>
@@ -330,44 +333,25 @@ const DetailInfoSidebar = ({ ticket, currentUser, agents, onAssign, assigning, o
         </InfoRow>
       </div>
 
-      {/* ── [TAMBAHAN] Hardware asset ringkasan di sidebar ── */}
       {ticket.category === 'Hardware' && ticket.hardware_asset && (
         <div className="pt-3.5 border-t flex flex-col gap-3" style={{ borderColor: theme.border }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Monitor size={12} style={{ color: theme.accent }} />
             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: theme.accent }}>Aset Hardware</span>
           </div>
-          {ticket.hardware_asset.nama_aset && (
-            <InfoRow label="Nama Aset" theme={theme}>{ticket.hardware_asset.nama_aset}</InfoRow>
-          )}
-          {ticket.hardware_asset.serial_number && (
-            <InfoRow label="Serial Number" theme={theme}>
-              <span className="font-mono text-xs">{ticket.hardware_asset.serial_number}</span>
-            </InfoRow>
-          )}
-          {ticket.hardware_asset.brand && ticket.hardware_asset.model && (
-            <InfoRow label="Brand / Model" theme={theme}>
-              {ticket.hardware_asset.brand} {ticket.hardware_asset.model}
-            </InfoRow>
-          )}
-          {ticket.hardware_asset.lokasi && (
-            <InfoRow label="Lokasi" theme={theme}>{ticket.hardware_asset.lokasi}</InfoRow>
-          )}
+          {ticket.hardware_asset.nama_aset && <InfoRow label="Nama Aset" theme={theme}>{ticket.hardware_asset.nama_aset}</InfoRow>}
+          {ticket.hardware_asset.serial_number && <InfoRow label="Serial Number" theme={theme}><span className="font-mono text-xs">{ticket.hardware_asset.serial_number}</span></InfoRow>}
+          {ticket.hardware_asset.brand && ticket.hardware_asset.model && <InfoRow label="Brand / Model" theme={theme}>{ticket.hardware_asset.brand} {ticket.hardware_asset.model}</InfoRow>}
+          {ticket.hardware_asset.lokasi && <InfoRow label="Lokasi" theme={theme}>{ticket.hardware_asset.lokasi}</InfoRow>}
           {ticket.hardware_asset.status && (
             <InfoRow label="Status Aset" theme={theme}>
-              <span style={{
-                fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 99, display: 'inline-block',
-                background: ticket.hardware_asset.status === 'Active' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)',
-                color: ticket.hardware_asset.status === 'Active' ? theme.success : theme.danger,
-                border: `1px solid ${ticket.hardware_asset.status === 'Active' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
-              }}>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 99, display: 'inline-block', background: ticket.hardware_asset.status === 'Active' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)', color: ticket.hardware_asset.status === 'Active' ? theme.success : theme.danger, border: `1px solid ${ticket.hardware_asset.status === 'Active' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
                 {ticket.hardware_asset.status}
               </span>
             </InfoRow>
           )}
         </div>
       )}
-      {/* ── [END TAMBAHAN] ── */}
     </div>
 
     <div className="rounded-xl p-4 flex flex-col gap-2" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
@@ -414,7 +398,6 @@ const TicketDetailPage = () => {
       if (!res.ok) throw new Error('Tiket tidak ditemukan.')
       const data = await res.json()
       setTicket(data)
-      // ✅ Fetch comments dengan attachments via endpoint terpisah
       const cRes = await authFetch(`/api/tickets/${id}/comments`)
       if (cRes.ok) {
         const cData = await cRes.json()
@@ -435,7 +418,10 @@ const TicketDetailPage = () => {
       if (!res.ok) return
       const data = await res.json()
       const list = Array.isArray(data) ? data : (data.data ?? data.users ?? [])
-      const filtered = list.filter(u => (u.role ?? u.role_name ?? '').toLowerCase() === 'it_support')
+      // ✅ FIX: Sertakan it_support DAN manager_it sebagai agent yang bisa di-assign
+      const filtered = list.filter(u =>
+        ASSIGNABLE_ROLES.includes((u.role ?? u.role_name ?? '').toLowerCase())
+      )
       setAgents(filtered.length > 0 ? filtered : list)
     } catch { }
   }
@@ -455,7 +441,6 @@ const TicketDetailPage = () => {
   const handleComment = async () => {
     const bodyText = comment.trim()
     if (!bodyText && (!selectedFiles || selectedFiles.length === 0)) return
-
     setSubmitting(true)
     try {
       const formData = new FormData()
@@ -463,20 +448,12 @@ const TicketDetailPage = () => {
       if (selectedFiles && selectedFiles.length > 0) {
         selectedFiles.forEach(file => formData.append('attachments[]', file))
       }
-
-      const res = await authFetch(`/api/tickets/${id}/comments`, {
-        method: 'POST',
-        body: formData,
-      })
-
+      const res = await authFetch(`/api/tickets/${id}/comments`, { method: 'POST', body: formData })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.message || 'Gagal mengirim komentar.')
       }
-
       const data = await res.json()
-
-      // ✅ Tambah komentar baru langsung ke state (sudah ada attachments dari response)
       setComments(prev => [data.comment, ...prev])
       setComment('')
       setSelectedFiles(null)
@@ -596,7 +573,6 @@ const TicketDetailPage = () => {
         </div>
       </div>
 
-      {/* Modal Resolve */}
       {resolveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }} onClick={(e) => { if (e.target === e.currentTarget) { setResolveModal(false); setResolutionNotes('') } }}>
           <div className="w-full max-w-md rounded-2xl p-6 flex flex-col gap-4" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
