@@ -32,6 +32,25 @@ class ReportController extends Controller
     // ── Role yang boleh lihat semua data ──────────────────────────────────────
     private const FULL_ACCESS_ROLES = ['super_admin', 'admin', 'manager', 'manager_it'];
 
+    // ── Daftar uraian kegiatan harian (sesuai form F/039/175/R/00) ────────────
+    private const KEGIATAN_HARIAN = [
+        1  => ['label' => 'Menangani permasalahan aplikasi RS dan master data',                                       'auto' => 'ticket'],
+        2  => ['label' => 'Melaksanakan penambahan/perubahan master data jika dibutuhkan',                           'auto' => null],
+        3  => ['label' => 'Melaksanakan uji coba penambahan/perubahan master data',                                  'auto' => null],
+        4  => ['label' => 'Membuat user manual penambahan/perubahan master data',                                    'auto' => null],
+        5  => ['label' => 'Mendokumentasikan data pendukung penambahan/perubahan master data',                       'auto' => null],
+        6  => ['label' => 'Menyediakan data dari database jika dibutuhkan',                                         'auto' => null],
+        7  => ['label' => 'Melaksanakan instalasi/update aplikasi jika dibutuhkan',                                  'auto' => null],
+        8  => ['label' => 'Memberikan pelatihan aplikasi kepada user jika dibutuhkan',                               'auto' => null],
+        9  => ['label' => 'Mempelajari aplikasi RS yang sudah ada dan yang baru dibuat',                             'auto' => null],
+        10 => ['label' => 'Melaksanakan koordinasi/rapat/pertemuan dengan internal RS atau pihak lain, jika dibutuhkan', 'auto' => null],
+        11 => ['label' => 'Mengikuti pelatihan/seminar/sosialisasi/studi banding/sejenisnya yang ditugaskan oleh atasan langsung', 'auto' => null],
+        12 => ['label' => 'Melaksanakan kegiatan lain yang diberikan atasan langsung',                               'auto' => null],
+        13 => ['label' => 'Melaksanakan uji coba aplikasi',                                                         'auto' => null],
+        14 => ['label' => 'Melaksanakan pelatihan/implementasi aplikasi kepada user',                                'auto' => null],
+        15 => ['label' => 'Membuat laporan kegiatan',                                                               'auto' => null],
+    ];
+
     private function hasFullAccess($user): bool
     {
         return in_array($user->role, self::FULL_ACCESS_ROLES);
@@ -164,19 +183,17 @@ class ReportController extends Controller
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // PDF EXPORT — LAPORAN TIKET (grouped by kategori, mirip gambar)
+    // PDF EXPORT — LAPORAN TIKET + LAPORAN KEGIATAN HARIAN
     // ══════════════════════════════════════════════════════════════════════════
 
     private function exportTicketsPdf($tickets, Request $request)
     {
-        // Group tiket by kategori
-        $grouped = $tickets->groupBy('category')->sortKeys();
-
+        $grouped    = $tickets->groupBy('category')->sortKeys();
         $filterDesc = $this->buildFilterDesc($request);
         $orgName    = config('app.org_name', 'IT Support Management System');
 
-        // ── Bangun HTML ──────────────────────────────────────────────────────
-        $tableRows = '';
+        // ── Bangun baris tabel tiket ─────────────────────────────────────────
+        $tableRows  = '';
         $grandTotal = 0;
 
         foreach ($grouped as $category => $items) {
@@ -185,24 +202,26 @@ class ReportController extends Controller
             $no = 1;
 
             foreach ($items as $t) {
-                $slaStatus = $t->sla_breached ? '<span class="breach">✗ Breach</span>' : '<span class="ok">✓ OK</span>';
+                $slaStatus = $t->sla_breached
+                    ? '<span class="breach">&#x2717; Breach</span>'
+                    : '<span class="ok">&#x2713; OK</span>';
                 $priClass  = 'pri-' . strtolower($t->priority ?? 'medium');
+
                 $tableRows .= "
                 <tr>
                     <td class='center'>{$no}</td>
                     <td>" . e($t->title) . "</td>
-                    <td>" . e($t->requester?->name ?? '—') . "</td>
+                    <td>" . e($t->requester?->name ?? '&#x2014;') . "</td>
                     <td>" . e($t->assignee?->name  ?? 'Unassigned') . "</td>
                     <td class='center {$priClass}'>" . e($t->priority) . "</td>
                     <td class='center'>" . e($t->status) . "</td>
-                    <td class='center mono'>" . ($t->created_at  ? $t->created_at->format('d/m/Y H:i')  : '—') . "</td>
-                    <td class='center mono'>" . ($t->resolved_at ? $t->resolved_at->format('d/m/Y H:i') : '—') . "</td>
+                    <td class='center mono'>" . ($t->created_at  ? $t->created_at->format('d/m/Y H:i')  : '&#x2014;') . "</td>
+                    <td class='center mono'>" . ($t->resolved_at ? $t->resolved_at->format('d/m/Y H:i') : '&#x2014;') . "</td>
                     <td class='center'>{$slaStatus}</td>
                 </tr>";
                 $no++;
             }
 
-            // Baris summary per kategori — style kuning seperti gambar
             $tableRows .= "
             <tr class='group-summary'>
                 <td colspan='9'>
@@ -211,7 +230,6 @@ class ReportController extends Controller
             </tr>";
         }
 
-        // Baris total akhir — highlight kuning terang
         $tableRows .= "
         <tr class='grand-total'>
             <td colspan='9'>
@@ -219,15 +237,44 @@ class ReportController extends Controller
             </td>
         </tr>";
 
-        $html = $this->buildTicketPdfHtml($orgName, $filterDesc, $tableRows, $grandTotal);
+        // ── Hitung tiket per hari untuk LKH ──────────────────────────────────
+        $ticketPerDay = [];
+        foreach ($tickets as $t) {
+            if ($t->created_at) {
+                $day = (int) $t->created_at->format('j');
+                $ticketPerDay[$day] = ($ticketPerDay[$day] ?? 0) + 1;
+            }
+        }
+
+        // Deteksi bulan & tahun dari filter atau tiket pertama
+        if ($request->filled('from')) {
+            $refDate = \Carbon\Carbon::parse($request->from);
+        } elseif ($tickets->isNotEmpty() && $tickets->first()->created_at) {
+            $refDate = $tickets->first()->created_at;
+        } else {
+            $refDate = now();
+        }
+        $lkhMonth = (int) $refDate->format('n');
+        $lkhYear  = (int) $refDate->format('Y');
+
+        // ── Bangun HTML lengkap (tiket + LKH) ────────────────────────────────
+        $lkhHtml = $this->buildLkhHtml($ticketPerDay, $lkhMonth, $lkhYear);
+        $html    = $this->buildTicketPdfHtml($orgName, $filterDesc, $tableRows, $grandTotal, $lkhHtml);
 
         return Pdf::loadHTML($html)
             ->setPaper('a4', 'landscape')
             ->download('laporan-tiket-' . now()->format('Ymd') . '.pdf');
     }
 
-    private function buildTicketPdfHtml(string $orgName, string $filterDesc, string $tableRows, int $grandTotal): string
-    {
+    // ── HTML builder utama (tiket + LKH di bawahnya) ─────────────────────────
+
+    private function buildTicketPdfHtml(
+        string $orgName,
+        string $filterDesc,
+        string $tableRows,
+        int    $grandTotal,
+        string $lkhSection = ''
+    ): string {
         return <<<HTML
 <!DOCTYPE html>
 <html>
@@ -237,78 +284,112 @@ class ReportController extends Controller
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 8px; color: #1a1a1a; }
 
-  /* ── Header ── */
+  /* ── Header laporan tiket ── */
   .page-header { text-align: center; margin-bottom: 14px; }
   .page-header h1 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
   .page-header .org { font-size: 10px; font-weight: 700; margin-bottom: 2px; }
   .page-header .filter { font-size: 8px; color: #555; margin-top: 4px; }
-  .divider { border-top: 2px solid #1a1a1a; margin: 6px 0 2px; }
+  .divider  { border-top: 2px solid #1a1a1a; margin: 6px 0 2px; }
   .divider2 { border-top: 1px solid #1a1a1a; margin-bottom: 10px; }
 
-  /* ── Table ── */
-  table { width: 100%; border-collapse: collapse; font-size: 7.5px; }
-  thead tr { background: #F5F5A0; }
-  th {
-    border: 1px solid #999;
-    padding: 5px 6px;
-    text-align: center;
-    font-weight: 700;
-    font-size: 8px;
-    background: #F5F5A0;
+  /* ── Tabel tiket ── */
+  table.ticket { width: 100%; border-collapse: collapse; font-size: 7.5px; }
+  table.ticket thead tr { background: #F5F5A0; }
+  table.ticket th {
+    border: 1px solid #999; padding: 5px 6px;
+    text-align: center; font-weight: 700; font-size: 8px; background: #F5F5A0;
   }
-  td {
-    border: 1px solid #bbb;
-    padding: 4px 6px;
-    vertical-align: middle;
-  }
-  tr:nth-child(even) td { background: #fafafa; }
+  table.ticket td { border: 1px solid #bbb; padding: 4px 6px; vertical-align: middle; }
+  table.ticket tr:nth-child(even) td { background: #fafafa; }
 
   .center { text-align: center; }
   .mono   { font-family: monospace; font-size: 7px; }
 
-  /* Prioritas warna */
   .pri-critical { color: #dc2626; font-weight: 700; }
   .pri-high     { color: #ea580c; font-weight: 700; }
   .pri-medium   { color: #d97706; }
   .pri-low      { color: #16a34a; }
-
-  /* SLA */
   .ok     { color: #16a34a; font-weight: 700; }
   .breach { color: #dc2626; font-weight: 700; }
 
-  /* ── Group summary row (kuning muda, bold) ── */
-  .group-summary td {
-    background: #FFFFAA !important;
-    color: #1a1a1a;
-    font-size: 8px;
-    padding: 4px 8px;
-    border: 1px solid #bbb;
+  tr.group-summary td {
+    background: #FFFFAA !important; color: #1a1a1a;
+    font-size: 8px; padding: 4px 8px; border: 1px solid #bbb;
+  }
+  tr.grand-total td {
+    background: #FFE200 !important; color: #1a1a1a;
+    font-size: 9px; font-weight: 700; padding: 5px 8px; border: 1px solid #bbb;
   }
 
-  /* ── Grand total row (kuning terang, bold) ── */
-  .grand-total td {
-    background: #FFE200 !important;
-    color: #1a1a1a;
-    font-size: 9px;
-    font-weight: 700;
-    padding: 5px 8px;
-    border: 1px solid #bbb;
+  .rpt-footer {
+    margin-top: 10px; font-size: 7px; color: #888;
+    display: flex; justify-content: space-between;
+    border-top: 1px solid #ccc; padding-top: 4px;
   }
 
-  /* ── Footer ── */
-  .footer {
-    margin-top: 10px;
-    font-size: 7px;
-    color: #888;
-    display: flex;
-    justify-content: space-between;
-    border-top: 1px solid #ccc;
-    padding-top: 4px;
+  /* ── Pemisah antara laporan tiket dan LKH ── */
+  .section-divider {
+    border-top: 2px dashed #aaa;
+    margin: 20px 0 16px;
+    page-break-before: always;
   }
+
+  /* ── LKH header ── */
+  .lkh-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .lkh-title-box {
+    flex: 1; text-align: center;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    border: 1px solid #999; padding: 5px 18px; display: inline-block;
+  }
+  .lkh-org-label  { font-size: 9px; font-weight: 700; color: #555; line-height: 1.3; }
+  .lkh-form-code  { font-size: 9px; color: #777; border: 1px solid #bbb; padding: 3px 7px; white-space: nowrap; }
+
+  /* ── LKH identity grid ── */
+  .identity-grid { display: table; width: 100%; margin-bottom: 10px; font-size: 9px; }
+  .identity-row  { display: table-row; }
+  .id-label      { display: table-cell; width: 130px; color: #555; padding: 1px 0; }
+  .id-colon      { display: table-cell; width: 12px; color: #555; }
+  .id-value      { display: table-cell; font-weight: 700; padding: 1px 0; }
+
+  /* ── Tabel LKH ── */
+  .lkh-note {
+    font-size: 8px; color: #92400e;
+    background: #fffbe6; border: 1px solid #ffe58f;
+    padding: 3px 8px; margin-bottom: 6px;
+  }
+  table.lkh { width: 100%; border-collapse: collapse; font-size: 7.5px; }
+  table.lkh th {
+    border: 1px solid #999; padding: 4px 2px;
+    text-align: center; font-weight: 700; background: #F5F5A0; font-size: 7.5px;
+  }
+  table.lkh td { border: 1px solid #bbb; padding: 3px 2px; vertical-align: middle; text-align: center; }
+  table.lkh td.td-uraian { text-align: left; padding: 3px 5px; }
+  table.lkh td.td-no     { width: 18px; }
+  table.lkh td.td-jumlah { font-weight: 700; width: 28px; }
+
+  td.cell-ticket { background: #dbeafe; color: #1e40af; font-weight: 700; }
+  td.cell-high   { background: #fef3c7; color: #92400e; font-weight: 700; }
+  td.cell-crit   { background: #fee2e2; color: #991b1b; font-weight: 700; }
+  td.cell-wknd   { background: #f0f0f0; color: #aaa; }
+  td.cell-off    { background: #f9f9f9; }
+
+  tr.lkh-total td { background: #F5F5A0; font-weight: 700; font-size: 8px; }
+  tr.lkh-grand td { background: #FFE200; font-weight: 700; font-size: 9px; }
+
+  .auto-tag {
+    font-size: 6px; color: #1e40af; background: #dbeafe;
+    border-radius: 2px; padding: 1px 2px; margin-left: 3px;
+  }
+
+  .lkh-legend { font-size: 7px; color: #555; margin-bottom: 5px; }
+  .lkh-ket    { font-size: 8px; color: #888; margin-top: 5px; }
 </style>
 </head>
 <body>
 
+<!-- ═══════════════════════════════════════════════
+     BAGIAN 1 — LAPORAN TIKET
+═══════════════════════════════════════════════ -->
 <div class="page-header">
   <div class="org">{$orgName}</div>
   <div class="divider"></div>
@@ -317,7 +398,7 @@ class ReportController extends Controller
   <div class="filter">{$filterDesc}</div>
 </div>
 
-<table>
+<table class="ticket">
   <thead>
     <tr>
       <th style="width:25px">No.</th>
@@ -336,11 +417,18 @@ class ReportController extends Controller
   </tbody>
 </table>
 
-<div class="footer">
+<div class="rpt-footer">
   <span>IT Support Management System</span>
   <span>Digenerate: {$this->nowFormatted()}</span>
   <span>Total tiket: {$grandTotal}</span>
 </div>
+
+<!-- ═══════════════════════════════════════════════
+     BAGIAN 2 — LAPORAN KEGIATAN HARIAN PEGAWAI
+═══════════════════════════════════════════════ -->
+<div class="section-divider"></div>
+
+{$lkhSection}
 
 </body>
 </html>
@@ -348,7 +436,180 @@ HTML;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // EXCEL EXPORT — LAPORAN TIKET (grouped by kategori, mirip gambar)
+    // LKH HTML BUILDER
+    // Menghasilkan section Laporan Kegiatan Harian Pegawai yang akan
+    // disisipkan di bawah laporan tiket pada export PDF.
+    //
+    // $ticketPerDay : array [day => count]  — tiket per tanggal
+    // $month        : bulan (1–12)
+    // $year         : tahun (4 digit)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    private function buildLkhHtml(array $ticketPerDay, int $month, int $year): string
+    {
+        $bulanNames = [
+            1=>'Januari',2=>'Februari',3=>'Maret',4=>'April',
+            5=>'Mei',6=>'Juni',7=>'Juli',8=>'Agustus',
+            9=>'September',10=>'Oktober',11=>'November',12=>'Desember',
+        ];
+
+        $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+        $bulantahun  = ($bulanNames[$month] ?? $month) . ' ' . $year;
+
+        // ── Header identity (ambil dari konfigurasi / bisa diextend via request) ──
+        $identityRows = $this->buildLkhIdentityRows($bulantahun);
+
+        // ── Header kolom tanggal (1–31) ───────────────────────────────────────
+        $dayThs = '';
+        for ($d = 1; $d <= 31; $d++) {
+            if ($d <= $daysInMonth) {
+                $dow     = (int) date('w', mktime(0, 0, 0, $month, $d, $year)); // 0=Sun
+                $style   = $dow === 0 ? ' style="background:#f0f0f0;color:#aaa"' : '';
+                $dayThs .= "<th{$style}>{$d}</th>";
+            } else {
+                $dayThs .= '<th style="background:#f9f9f9;color:#ccc;border:1px solid #ddd"></th>';
+            }
+        }
+
+        // ── Baris kegiatan ────────────────────────────────────────────────────
+        $bodyRows   = '';
+        $colTotals  = array_fill(1, 31, 0);
+        $grandTotal = 0;
+
+        foreach (self::KEGIATAN_HARIAN as $no => $kg) {
+            $rowTotal = 0;
+            $cells    = '';
+
+            for ($d = 1; $d <= 31; $d++) {
+                if ($d > $daysInMonth) {
+                    $cells .= '<td class="cell-off"></td>';
+                    continue;
+                }
+
+                $dow = (int) date('w', mktime(0, 0, 0, $month, $d, $year));
+                $val = 0;
+
+                // Baris 1 saja yang auto-fill dari tiket per hari
+                if ($kg['auto'] === 'ticket') {
+                    $val = $ticketPerDay[$d] ?? 0;
+                }
+
+                $rowTotal        += $val;
+                $colTotals[$d]   += $val;
+                $grandTotal      += $val;
+
+                if ($dow === 0) {
+                    $cls = 'cell-wknd';
+                } elseif ($val >= 10) {
+                    $cls = 'cell-crit';
+                } elseif ($val >= 5) {
+                    $cls = 'cell-high';
+                } elseif ($val > 0) {
+                    $cls = 'cell-ticket';
+                } else {
+                    $cls = '';
+                }
+
+                $display = $val > 0 ? $val : '';
+                $cells  .= "<td class=\"{$cls}\">{$display}</td>";
+            }
+
+            $autoTag    = $kg['auto'] ? '<span class="auto-tag">auto</span>' : '';
+            $jumlahCol  = $kg['auto'] ? " style=\"color:#1e40af\"" : '';
+            $bodyRows  .= "
+            <tr>
+                <td class=\"td-no\">{$no}</td>
+                <td class=\"td-uraian\">" . e($kg['label']) . "{$autoTag}</td>
+                {$cells}
+                <td class=\"td-jumlah\"{$jumlahCol}>{$rowTotal}</td>
+            </tr>";
+        }
+
+        // ── Baris total kolom ─────────────────────────────────────────────────
+        $colTotalCells = '';
+        for ($d = 1; $d <= 31; $d++) {
+            if ($d > $daysInMonth) {
+                $colTotalCells .= '<td class="cell-off"></td>';
+                continue;
+            }
+            $dow = (int) date('w', mktime(0, 0, 0, $month, $d, $year));
+            $v   = $colTotals[$d];
+            $cls = $dow === 0 ? 'cell-wknd' : ($v >= 10 ? 'cell-crit' : ($v >= 5 ? 'cell-high' : ($v > 0 ? 'cell-ticket' : '')));
+            $colTotalCells .= "<td class=\"{$cls}\">{$v}</td>";
+        }
+
+        return <<<HTML
+<!-- LKH Section -->
+<div class="lkh-header">
+  <div style="font-size:9px;">
+    <div class="lkh-org-label">IT Support<br>Management System</div>
+  </div>
+  <div style="flex:1;text-align:center;">
+    <span class="lkh-title-box">Laporan Kegiatan Harian Pegawai</span>
+  </div>
+  <div class="lkh-form-code">F/039/175/R/00</div>
+</div>
+
+{$identityRows}
+
+<div class="lkh-note">
+  <strong>Auto:</strong> Baris 1 diisi otomatis dari jumlah tiket yang dibuat pada hari yang sama (laporan di atas).
+  Warna: <span style="background:#dbeafe;color:#1e40af;padding:1px 3px;">biru</span>=tiket ada&nbsp;
+  <span style="background:#fef3c7;color:#92400e;padding:1px 3px;">kuning</span>=&#x2265;5&nbsp;
+  <span style="background:#fee2e2;color:#991b1b;padding:1px 3px;">merah</span>=&#x2265;10
+</div>
+
+<table class="lkh">
+  <thead>
+    <tr>
+      <th class="td-no">NO</th>
+      <th class="td-uraian" style="min-width:180px">URAIAN KEGIATAN</th>
+      {$dayThs}
+      <th class="td-jumlah">JML</th>
+    </tr>
+  </thead>
+  <tbody>
+    {$bodyRows}
+    <tr class="lkh-total">
+      <td colspan="2" style="text-align:left;padding-left:6px;">JUMLAH</td>
+      {$colTotalCells}
+      <td class="td-jumlah">{$grandTotal}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="lkh-ket"><strong>Ket:</strong> Kegiatan tidak selalu ada di tiap bulan</div>
+HTML;
+    }
+
+    // ── Baris identity untuk LKH (bisa di-override lewat config/env) ─────────
+
+    private function buildLkhIdentityRows(string $bulantahun): string
+    {
+        $fields = [
+            'Nama'               => config('report.pegawai.nama',    ''),
+            'NIP'                => config('report.pegawai.nip',     ''),
+            'Pangkat/Gol Ruangan'=> config('report.pegawai.pangkat', ''),
+            'Jabatan/Pekerjaan'  => config('report.pegawai.jabatan', ''),
+            'Unit Organisasi'    => config('report.pegawai.unit',    ''),
+            'Bulan, Tahun'       => $bulantahun,
+        ];
+
+        $rows = '';
+        foreach ($fields as $label => $value) {
+            $rows .= "
+            <div class=\"identity-row\">
+                <span class=\"id-label\">{$label}</span>
+                <span class=\"id-colon\">:</span>
+                <span class=\"id-value\">" . e($value) . "</span>
+            </div>";
+        }
+
+        return "<div class=\"identity-grid\">{$rows}</div>";
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // EXCEL EXPORT — LAPORAN TIKET (grouped by kategori)
     // ══════════════════════════════════════════════════════════════════════════
 
     private function exportTicketsExcel($tickets, Request $request)
@@ -360,18 +621,14 @@ HTML;
         $ss    = new Spreadsheet();
         $sheet = $ss->getActiveSheet()->setTitle('Laporan Tiket');
 
-        // ── Warna konstanta ──────────────────────────────────────────────────
-        $COLOR_HEADER_BG  = 'FFF5F5A0'; // kuning header kolom
-        $COLOR_GROUP_BG   = 'FFFFFFEE'; // kuning muda grup summary
-        $COLOR_TOTAL_BG   = 'FFFFE200'; // kuning terang grand total
-        $COLOR_TITLE_BG   = 'FF1E3A5F'; // navy title
-        $COLOR_ODD_ROW    = 'FFFAFAFA';
-        $COLOR_EVEN_ROW   = 'FFFFFFFF';
+        $COLOR_HEADER_BG = 'FFF5F5A0';
+        $COLOR_TOTAL_BG  = 'FFFFE200';
+        $COLOR_TITLE_BG  = 'FF1E3A5F';
 
-        $col  = 1; // mulai kolom A
-        $row  = 1;
+        $col = 1;
+        $row = 1;
 
-        // ── Baris 1: Nama Organisasi ─────────────────────────────────────────
+        // Baris 1: Nama Organisasi
         $sheet->setCellValueByColumnAndRow($col, $row, $orgName);
         $sheet->mergeCellsByColumnAndRow($col, $row, 9, $row);
         $sheet->getStyleByColumnAndRow($col, $row, 9, $row)->applyFromArray([
@@ -382,7 +639,7 @@ HTML;
         $sheet->getRowDimension($row)->setRowHeight(22);
         $row++;
 
-        // ── Baris 2: Judul ───────────────────────────────────────────────────
+        // Baris 2: Judul
         $sheet->setCellValueByColumnAndRow($col, $row, 'LAPORAN TIKET IT SUPPORT');
         $sheet->mergeCellsByColumnAndRow($col, $row, 9, $row);
         $sheet->getStyleByColumnAndRow($col, $row, 9, $row)->applyFromArray([
@@ -393,7 +650,7 @@ HTML;
         $sheet->getRowDimension($row)->setRowHeight(18);
         $row++;
 
-        // ── Baris 3: Filter info ─────────────────────────────────────────────
+        // Baris 3: Filter info
         $sheet->setCellValueByColumnAndRow($col, $row, $filterDesc);
         $sheet->mergeCellsByColumnAndRow($col, $row, 9, $row);
         $sheet->getStyleByColumnAndRow($col, $row, 9, $row)->applyFromArray([
@@ -403,11 +660,9 @@ HTML;
         $row++;
         $row++; // spasi
 
-        // ── Header kolom ─────────────────────────────────────────────────────
-        $headers = ['No.', 'Judul Tiket', 'Reporter', 'Departemen', 'Assigned To', 'Prioritas', 'Status', 'Dibuat', 'Diselesaikan', 'SLA'];
-        $colCount = count($headers);
-
-        // Expand merge sampai kolom J (10)
+        // Header kolom tiket
+        $headers   = ['No.', 'Judul Tiket', 'Reporter', 'Departemen', 'Assigned To', 'Prioritas', 'Status', 'Dibuat', 'Diselesaikan', 'SLA'];
+        $colCount  = count($headers);
         foreach ($headers as $hIdx => $hLabel) {
             $sheet->setCellValueByColumnAndRow($hIdx + 1, $row, $hLabel);
         }
@@ -420,14 +675,13 @@ HTML;
         $sheet->getRowDimension($row)->setRowHeight(16);
         $row++;
 
-        // ── Set lebar kolom ──────────────────────────────────────────────────
         $colWidths = [5, 40, 18, 16, 18, 12, 15, 18, 18, 10];
         foreach ($colWidths as $cIdx => $width) {
             $sheet->getColumnDimensionByColumn($cIdx + 1)->setWidth($width);
         }
 
-        // ── Data per grup ────────────────────────────────────────────────────
-        $grandTotal = 0;
+        // Data per grup
+        $grandTotal   = 0;
         $dataRowStyle = [
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FFBBBBBB']]],
             'font'    => ['size' => 8],
@@ -439,8 +693,8 @@ HTML;
             $no = 1;
 
             foreach ($items as $t) {
-                $isEven = ($no % 2 === 0);
-                $bgColor = $isEven ? $COLOR_EVEN_ROW : $COLOR_ODD_ROW;
+                $isEven  = ($no % 2 === 0);
+                $bgColor = $isEven ? 'FFFFFFFF' : 'FFFAFAFA';
 
                 $rowData = [
                     $no,
@@ -460,22 +714,19 @@ HTML;
                 }
 
                 $sheet->getStyleByColumnAndRow(1, $row, $colCount, $row)->applyFromArray(array_merge($dataRowStyle, [
-                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgColor]],
+                    'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgColor]],
                     'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
                 ]));
 
-                // Warna prioritas di kolom 6
                 $priColors = ['critical' => 'FFDC2626', 'high' => 'FFEA580C', 'medium' => 'FFD97706', 'low' => 'FF16A34A'];
                 $priColor  = $priColors[strtolower($t->priority ?? 'medium')] ?? 'FF1A1A1A';
                 $sheet->getStyleByColumnAndRow(6, $row)->getFont()->getColor()->setARGB($priColor);
                 $sheet->getStyleByColumnAndRow(6, $row)->getFont()->setBold(true);
 
-                // Warna SLA di kolom 10
                 $slaColor = $t->sla_breached ? 'FFDC2626' : 'FF16A34A';
                 $sheet->getStyleByColumnAndRow(10, $row)->getFont()->getColor()->setARGB($slaColor);
                 $sheet->getStyleByColumnAndRow(10, $row)->getFont()->setBold(true);
 
-                // Center beberapa kolom
                 foreach ([1, 6, 7, 8, 9, 10] as $cCenter) {
                     $sheet->getStyleByColumnAndRow($cCenter, $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 }
@@ -485,7 +736,7 @@ HTML;
                 $row++;
             }
 
-            // ── Baris summary grup (kuning muda) ─────────────────────────────
+            // Baris summary grup
             $label = "Kategori : " . ($category ?: 'Tidak Ada Kategori') . " , jumlah : {$count}";
             $sheet->setCellValueByColumnAndRow(1, $row, $label);
             $sheet->mergeCellsByColumnAndRow(1, $row, $colCount, $row);
@@ -499,7 +750,7 @@ HTML;
             $row++;
         }
 
-        // ── Baris grand total (kuning terang) ────────────────────────────────
+        // Baris grand total
         $totalLabel = "Jumlah tiket yang ditangani adalah =  {$grandTotal}";
         $sheet->setCellValueByColumnAndRow(1, $row, $totalLabel);
         $sheet->mergeCellsByColumnAndRow(1, $row, $colCount, $row);
@@ -512,8 +763,11 @@ HTML;
         $sheet->getRowDimension($row)->setRowHeight(18);
         $row++;
 
-        // ── Baris footer generated ───────────────────────────────────────────
-        $row++;
+        // ── Sheet kedua: Laporan Kegiatan Harian ─────────────────────────────
+        $this->buildLkhExcelSheet($ss, $tickets, $request);
+
+        // Footer sheet pertama
+        $row += 2;
         $sheet->setCellValueByColumnAndRow(1, $row, 'Digenerate: ' . $this->nowFormatted());
         $sheet->getStyleByColumnAndRow(1, $row)->applyFromArray([
             'font' => ['italic' => true, 'size' => 7, 'color' => ['argb' => 'FF888888']],
@@ -526,6 +780,217 @@ HTML;
             'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="laporan-tiket-' . now()->format('Ymd') . '.xlsx"',
             'Cache-Control'       => 'max-age=0',
+        ]);
+    }
+
+    // ── Sheet LKH di dalam Excel export ──────────────────────────────────────
+
+    private function buildLkhExcelSheet(Spreadsheet $ss, $tickets, Request $request): void
+    {
+        // Deteksi bulan & tahun
+        if ($request->filled('from')) {
+            $refDate = \Carbon\Carbon::parse($request->from);
+        } elseif ($tickets->isNotEmpty() && $tickets->first()->created_at) {
+            $refDate = $tickets->first()->created_at;
+        } else {
+            $refDate = now();
+        }
+        $month = (int) $refDate->format('n');
+        $year  = (int) $refDate->format('Y');
+
+        $bulanNames = [
+            1=>'Januari',2=>'Februari',3=>'Maret',4=>'April',
+            5=>'Mei',6=>'Juni',7=>'Juli',8=>'Agustus',
+            9=>'September',10=>'Oktober',11=>'November',12=>'Desember',
+        ];
+        $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+        $bulantahun  = ($bulanNames[$month] ?? $month) . ' ' . $year;
+
+        // Hitung tiket per hari
+        $ticketPerDay = [];
+        foreach ($tickets as $t) {
+            if ($t->created_at && (int)$t->created_at->format('n') === $month && (int)$t->created_at->format('Y') === $year) {
+                $day = (int) $t->created_at->format('j');
+                $ticketPerDay[$day] = ($ticketPerDay[$day] ?? 0) + 1;
+            }
+        }
+
+        $sheet = $ss->createSheet()->setTitle('Kegiatan Harian');
+        $sheet = $ss->getSheetByName('Kegiatan Harian');
+
+        $COLOR_TITLE_BG  = 'FF1E3A5F';
+        $COLOR_HEADER_BG = 'FFF5F5A0';
+        $COLOR_TOTAL_BG  = 'FFFFE200';
+        $COLOR_TICKET    = 'FFDBEAFE';
+        $COLOR_HIGH      = 'FFFEF3C7';
+        $COLOR_CRIT      = 'FFFEE2E2';
+        $COLOR_WKND      = 'FFF0F0F0';
+
+        $row = 1;
+
+        // Judul
+        $totalCols = 2 + 31 + 1; // no + uraian + 31 hari + jumlah
+        $sheet->setCellValueByColumnAndRow(1, $row, 'LAPORAN KEGIATAN HARIAN PEGAWAI');
+        $sheet->mergeCellsByColumnAndRow(1, $row, $totalCols, $row);
+        $sheet->getStyleByColumnAndRow(1, $row, $totalCols, $row)->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 12, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $COLOR_TITLE_BG]],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+        $sheet->getRowDimension($row)->setRowHeight(22);
+        $row++;
+
+        // Sub-judul form code
+        $sheet->setCellValueByColumnAndRow(1, $row, 'F/039/175/R/00 — IT Support Management System');
+        $sheet->mergeCellsByColumnAndRow(1, $row, $totalCols, $row);
+        $sheet->getStyleByColumnAndRow(1, $row, $totalCols, $row)->applyFromArray([
+            'font'      => ['italic' => true, 'size' => 8, 'color' => ['argb' => 'FF888888']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT],
+        ]);
+        $row++;
+        $row++; // spasi
+
+        // Identity rows
+        $identityData = [
+            'Nama'                => config('report.pegawai.nama',    ''),
+            'NIP'                 => config('report.pegawai.nip',     ''),
+            'Pangkat/Gol Ruangan' => config('report.pegawai.pangkat', ''),
+            'Jabatan/Pekerjaan'   => config('report.pegawai.jabatan', ''),
+            'Unit Organisasi'     => config('report.pegawai.unit',    ''),
+            'Bulan, Tahun'        => $bulantahun,
+        ];
+        foreach ($identityData as $label => $value) {
+            $sheet->setCellValueByColumnAndRow(1, $row, $label);
+            $sheet->setCellValueByColumnAndRow(2, $row, ':');
+            $sheet->setCellValueByColumnAndRow(3, $row, $value);
+            $sheet->getStyleByColumnAndRow(1, $row)->getFont()->setBold(false);
+            $sheet->getStyleByColumnAndRow(3, $row)->getFont()->setBold(true);
+            $sheet->getColumnDimensionByColumn(1)->setWidth(22);
+            $sheet->getColumnDimensionByColumn(2)->setWidth(3);
+            $sheet->getColumnDimensionByColumn(3)->setWidth(40);
+            $row++;
+        }
+        $row++; // spasi
+
+        // Header kolom: NO | URAIAN | 1 | 2 | ... | 31 | JML
+        $sheet->setCellValueByColumnAndRow(1, $row, 'NO');
+        $sheet->setCellValueByColumnAndRow(2, $row, 'URAIAN KEGIATAN');
+        for ($d = 1; $d <= 31; $d++) {
+            $sheet->setCellValueByColumnAndRow($d + 2, $row, $d);
+            $sheet->getColumnDimensionByColumn($d + 2)->setWidth(4);
+        }
+        $sheet->setCellValueByColumnAndRow(34, $row, 'JML');
+        $sheet->getColumnDimensionByColumn(34)->setWidth(6);
+
+        $sheet->getStyleByColumnAndRow(1, $row, $totalCols, $row)->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 8],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $COLOR_HEADER_BG]],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
+            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FF999999']]],
+        ]);
+        $sheet->getRowDimension($row)->setRowHeight(16);
+        $sheet->getColumnDimensionByColumn(2)->setWidth(50);
+        $sheet->getColumnDimensionByColumn(1)->setWidth(5);
+        $row++;
+
+        // Data kegiatan
+        $colTotals  = array_fill(1, 31, 0);
+        $grandLkh   = 0;
+
+        foreach (self::KEGIATAN_HARIAN as $no => $kg) {
+            $rowTotal = 0;
+            $sheet->setCellValueByColumnAndRow(1, $row, $no);
+            $sheet->setCellValueByColumnAndRow(2, $row, $kg['label'] . ($kg['auto'] ? ' [auto]' : ''));
+
+            for ($d = 1; $d <= 31; $d++) {
+                $colIndex = $d + 2;
+                if ($d > $daysInMonth) {
+                    $sheet->getStyleByColumnAndRow($colIndex, $row, $colIndex, $row)->applyFromArray([
+                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFF9F9F9']],
+                    ]);
+                    continue;
+                }
+
+                $dow = (int) date('w', mktime(0, 0, 0, $month, $d, $year));
+                $val = ($kg['auto'] === 'ticket') ? ($ticketPerDay[$d] ?? 0) : 0;
+
+                $rowTotal       += $val;
+                $colTotals[$d]  += $val;
+                $grandLkh       += $val;
+
+                if ($val > 0) {
+                    $sheet->setCellValueByColumnAndRow($colIndex, $row, $val);
+                }
+
+                $bgArgb = $dow === 0 ? $COLOR_WKND : ($val >= 10 ? $COLOR_CRIT : ($val >= 5 ? $COLOR_HIGH : ($val > 0 ? $COLOR_TICKET : 'FFFFFFFF')));
+
+                $sheet->getStyleByColumnAndRow($colIndex, $row)->applyFromArray([
+                    'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgArgb]],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+                    'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FFBBBBBB']]],
+                    'font'      => ['size' => 8, 'bold' => $val > 0],
+                ]);
+            }
+
+            $sheet->setCellValueByColumnAndRow(34, $row, $rowTotal ?: '');
+            $sheet->getStyleByColumnAndRow(1, $row, $totalCols, $row)->applyFromArray([
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FFBBBBBB']]],
+                'font'    => ['size' => 8],
+            ]);
+            $sheet->getStyleByColumnAndRow(1, $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyleByColumnAndRow(34, $row)->applyFromArray([
+                'font'      => ['bold' => true, 'size' => 8, 'color' => ['argb' => $kg['auto'] ? 'FF1E40AF' : 'FF1A1A1A']],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            ]);
+            $sheet->getRowDimension($row)->setRowHeight(14);
+            $row++;
+        }
+
+        // Baris JUMLAH
+        $sheet->setCellValueByColumnAndRow(1, $row, '');
+        $sheet->setCellValueByColumnAndRow(2, $row, 'JUMLAH');
+        for ($d = 1; $d <= 31; $d++) {
+            $colIndex = $d + 2;
+            $v        = $colTotals[$d] ?? 0;
+            if ($d <= $daysInMonth) {
+                $sheet->setCellValueByColumnAndRow($colIndex, $row, $v ?: '');
+                $dow    = (int) date('w', mktime(0, 0, 0, $month, $d, $year));
+                $bgArgb = $dow === 0 ? $COLOR_WKND : ($v >= 10 ? $COLOR_CRIT : ($v >= 5 ? $COLOR_HIGH : ($v > 0 ? $COLOR_TICKET : $COLOR_HEADER_BG)));
+                $sheet->getStyleByColumnAndRow($colIndex, $row)->applyFromArray([
+                    'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $bgArgb]],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+                    'font'      => ['bold' => true, 'size' => 8],
+                    'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FF999999']]],
+                ]);
+            } else {
+                $sheet->getStyleByColumnAndRow($colIndex, $row)->applyFromArray([
+                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFF9F9F9']],
+                ]);
+            }
+        }
+        $sheet->setCellValueByColumnAndRow(34, $row, $grandLkh);
+        $sheet->getStyleByColumnAndRow(1, $row, $totalCols, $row)->applyFromArray([
+            'fill'    => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $COLOR_HEADER_BG]],
+            'font'    => ['bold' => true, 'size' => 9],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FF999999']]],
+        ]);
+        $sheet->getStyleByColumnAndRow(34, $row)->applyFromArray([
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $COLOR_TOTAL_BG]],
+            'font'      => ['bold' => true, 'size' => 9],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+        $sheet->getRowDimension($row)->setRowHeight(16);
+        $row += 2;
+
+        // Footer ket
+        $sheet->setCellValueByColumnAndRow(1, $row, 'Ket: Kegiatan tidak selalu ada di tiap bulan');
+        $sheet->getStyleByColumnAndRow(1, $row)->applyFromArray([
+            'font' => ['italic' => true, 'size' => 8, 'color' => ['argb' => 'FF888888']],
+        ]);
+        $row++;
+        $sheet->setCellValueByColumnAndRow(1, $row, 'Digenerate: ' . $this->nowFormatted());
+        $sheet->getStyleByColumnAndRow(1, $row)->applyFromArray([
+            'font' => ['italic' => true, 'size' => 7, 'color' => ['argb' => 'FF888888']],
         ]);
     }
 
@@ -888,8 +1353,6 @@ HTML;
   .pri-High     { color:#ea580c; font-weight:700; }
   .pri-Medium   { color:#d97706; }
   .pri-Low      { color:#16a34a; }
-  .ok      { color:#10b981; font-weight:700; }
-  .breached{ color:#ef4444; font-weight:700; }
 </style>
 </head><body>
 <div class="header">
@@ -902,7 +1365,7 @@ HTML;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // PROJECT REPORTS (tidak berubah)
+    // PROJECT REPORTS
     // ══════════════════════════════════════════════════════════════════════════
 
     public function summaryproject(Request $request): JsonResponse
@@ -915,12 +1378,12 @@ HTML;
         if ($request->filled('status'))   $query->where('status', $request->input('status'));
         if ($request->filled('priority')) $query->where('priority', $request->input('priority'));
 
-        $projects   = $query->get();
-        $projectIds = $projects->pluck('id');
-        $totalTasks = Task::whereIn('project_id', $projectIds)->count();
+        $projects       = $query->get();
+        $projectIds     = $projects->pluck('id');
+        $totalTasks     = Task::whereIn('project_id', $projectIds)->count();
         $completedTasks = Task::whereIn('project_id', $projectIds)
             ->whereHas('column', fn($q) => $q->where('name', 'Prod'))->count();
-        $avgProgress = $projects->count() > 0 ? round($projects->avg('task_stats.progress') ?? 0) : 0;
+        $avgProgress    = $projects->count() > 0 ? round($projects->avg('task_stats.progress') ?? 0) : 0;
 
         return response()->json([
             'total_projects'  => $projects->count(),
@@ -944,8 +1407,11 @@ HTML;
         if ($request->filled('priority')) $query->where('priority', $request->input('priority'));
 
         $projects = $query->latest()->get()->map(function ($project) {
-            $columns = $project->columns()->withCount('tasks')->orderBy('position')->get();
-            $totalColumns = $columns->count(); $totalTasks = 0; $weightedScore = 0.0;
+            $columns      = $project->columns()->withCount('tasks')->orderBy('position')->get();
+            $totalColumns = $columns->count();
+            $totalTasks   = 0;
+            $weightedScore = 0.0;
+
             foreach ($columns as $index => $column) {
                 $count = $column->tasks_count ?? 0;
                 if ($count === 0) continue;
@@ -953,9 +1419,11 @@ HTML;
                 $weight         = $totalColumns > 1 ? ($index / ($totalColumns - 1)) * 100 : 100.0;
                 $weightedScore += $count * $weight;
             }
+
             $lastColumn = $columns->last();
             $completed  = $lastColumn ? ($lastColumn->tasks_count ?? 0) : 0;
             $progress   = $totalTasks > 0 ? (int) round($weightedScore / $totalTasks) : 0;
+
             return [
                 'name'            => $project->name,
                 'category'        => $project->category ?? '—',
