@@ -73,6 +73,128 @@ const Pagination = ({ currentPage, lastPage, total, perPage, onPageChange, loadi
   )
 }
 
+// ─── SearchableSelect ─────────────────────────────────────────
+const SearchableSelect = ({ options, value, onChange, disabled, placeholder = 'Pilih...', theme }) => {
+  const [open, setOpen]     = useState(false)
+  const [search, setSearch] = useState('')
+  const wrapRef             = useRef(null)
+
+  const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const select = (opt) => {
+    onChange(opt)
+    setOpen(false)
+    setSearch('')
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}>
+      {/* Trigger button */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(o => !o)}
+        style={{
+          width: '100%', background: theme.surfaceAlt,
+          border: `1px solid ${open ? theme.accent : theme.border}`,
+          borderRadius: 8, padding: '8px 12px',
+          fontSize: 13, color: value ? theme.text : theme.textMuted,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          transition: 'border-color 0.2s', fontFamily: 'inherit',
+          outline: 'none', boxSizing: 'border-box',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+          {disabled ? 'Memuat...' : (value || placeholder)}
+        </span>
+        <svg
+          width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke={theme.textMuted} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ flexShrink: 0, marginLeft: 8, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 9999,
+          background: theme.surface, border: `1px solid ${theme.border}`,
+          borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.28)',
+          overflow: 'hidden',
+          animation: 'hwSlideDown 0.15s ease',
+        }}>
+          {/* Search input */}
+          <div style={{ padding: '8px 8px 4px', borderBottom: `1px solid ${theme.border}` }}>
+            <div style={{ position: 'relative' }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={theme.textMuted} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                autoFocus
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Cari kategori..."
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: theme.surfaceAlt, border: `1px solid ${theme.border}`,
+                  borderRadius: 6, padding: '6px 10px 6px 28px',
+                  fontSize: 12, color: theme.text, outline: 'none',
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Options list */}
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {filtered.length === 0
+              ? <div style={{ padding: '10px 14px', fontSize: 12, color: theme.textMuted, textAlign: 'center' }}>Tidak ditemukan</div>
+              : filtered.map(opt => (
+                  <div
+                    key={opt}
+                    onClick={() => select(opt)}
+                    style={{
+                      padding: '8px 14px', fontSize: 13, cursor: 'pointer',
+                      color: opt === value ? theme.accent : theme.text,
+                      background: opt === value ? (theme.accentSoft ?? 'rgba(59,130,246,0.08)') : 'transparent',
+                      fontWeight: opt === value ? 600 : 400,
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      transition: 'background 0.12s',
+                    }}
+                    onMouseEnter={e => { if (opt !== value) e.currentTarget.style.background = theme.surfaceHover }}
+                    onMouseLeave={e => { if (opt !== value) e.currentTarget.style.background = 'transparent' }}
+                  >
+                    {opt === value
+                      ? <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={theme.accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      : <span style={{ width: 11 }} />
+                    }
+                    {opt}
+                  </div>
+                ))
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── NewTicketModal ───────────────────────────────────────────
 const PRIORITIES   = ['Low', 'Medium', 'High', 'Critical']
 const EMPTY_TICKET = { title: '', category: '', priority: 'Medium', description: '' }
@@ -237,7 +359,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
     : ['Network', 'Email', 'Printer', 'Software', 'Hardware', 'Server', 'Security', 'Others']
 
   return (
-    // ✅ FIX: Hapus onClick={onClose} dari overlay — klik di luar modal tidak menutup
     <div style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '12px', overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 18, width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.4)' }}>
 
@@ -256,15 +377,21 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {/* ── Kategori: SearchableSelect ── */}
             <div>
               <label style={labelStyle}>Kategori</label>
-              <select style={inputStyle} value={form.category} onChange={set('category')} disabled={catLoading}>
-                {catLoading
-                  ? <option>Memuat...</option>
-                  : displayCategories.map(c => <option key={c} value={c}>{c}</option>)
-                }
-              </select>
+              <SearchableSelect
+                options={displayCategories}
+                value={form.category}
+                onChange={(val) => {
+                  setForm(f => ({ ...f, category: val }))
+                  setErrors(e => ({ ...e, category: undefined }))
+                }}
+                disabled={catLoading}
+                theme={theme}
+              />
             </div>
+
             <div>
               <label style={labelStyle}>Prioritas</label>
               <select style={inputStyle} value={form.priority} onChange={set('priority')}>
@@ -305,12 +432,13 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Kategori Aset</label>
-                  <select style={inputStyle} value={hardware.asset_kategori} onChange={setHw('asset_kategori')} disabled={assetCatLoading}>
-                    {assetCatLoading
-                      ? <option>Memuat...</option>
-                      : (assetCatNames.length > 0 ? assetCatNames : ASSET_KATEGORI_FALLBACK).map(k => <option key={k}>{k}</option>)
-                    }
-                  </select>
+                  <SearchableSelect
+                    options={assetCatLoading ? [] : (assetCatNames.length > 0 ? assetCatNames : ASSET_KATEGORI_FALLBACK)}
+                    value={hardware.asset_kategori}
+                    onChange={(val) => setHardware(h => ({ ...h, asset_kategori: val }))}
+                    disabled={assetCatLoading}
+                    theme={theme}
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Status</label>
@@ -430,7 +558,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
 
 // ─── DeleteTicketModal ────────────────────────────────────────
 const DeleteTicketModal = ({ ticket, onClose, onConfirm, loading, theme }) => (
-  // ✅ FIX: Hapus onClick={onClose} dari overlay — klik di luar modal tidak menutup
   <div style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 12 }}>
     <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, width: '100%', maxWidth: 380, boxShadow: '0 25px 60px rgba(0,0,0,0.35)', overflow: 'hidden' }}>
       <div style={{ padding: '24px 20px', textAlign: 'center' }}>
@@ -508,19 +635,13 @@ const TicketsPage = () => {
   const PER_PAGE    = 10
   const STATUS_TABS = ['All', 'Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed']
 
-  // ✅ FIX: Blokir navigasi browser (back/forward) saat modal terbuka
   useEffect(() => {
     const isModalOpen = showNew || !!deleteTicket
     if (!isModalOpen) return
-
-    // Push state dummy agar back button tidak langsung navigasi keluar
     window.history.pushState(null, '', window.location.href)
-
     const handlePopState = () => {
-      // Kembalikan state agar tetap di halaman ini
       window.history.pushState(null, '', window.location.href)
     }
-
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [showNew, deleteTicket])
@@ -607,14 +728,8 @@ const TicketsPage = () => {
 
       <FilterTabs tabs={STATUS_TABS} active={activeTab} onChange={t => setActiveTab(t)} />
 
-      {/* ✅ FIX: Overlay transparan untuk blokir klik sidebar/navigasi saat modal terbuka */}
       {isModalOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 999,
-          cursor: 'not-allowed',
-        }} />
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999, cursor: 'not-allowed' }} />
       )}
 
       <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, overflow: 'hidden' }}>

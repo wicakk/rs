@@ -27,8 +27,9 @@ const makeLbl = (theme) => ({
   color: theme.textMuted, marginBottom: 5,
 })
 
+// ✅ FIX: Hapus onClick={onClose} dari overlay — klik di luar modal tidak menutup
 const ModalShell = ({ onClose, children, maxWidth = 440, theme }) => (
-  <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 12 }}>
+  <div style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 12 }}>
     <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, width: '100%', maxWidth, boxShadow: '0 25px 60px rgba(0,0,0,0.35)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
       {children}
     </div>
@@ -278,11 +279,7 @@ function UsersPage() {
       const res = await fetch('/api/users', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(form) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.errors ? Object.values(data.errors).flat()[0] : data.message || 'Gagal menambahkan user')
-      setUsers(p => [...p, { 
-        ...(data.user ?? data.data ?? data), 
-        is_active: true, 
-        tickets: 0 
-      }])
+      setUsers(p => [...p, { ...(data.user ?? data.data ?? data), is_active: true, tickets: 0 }])
       setAddOpen(false); showToast('User berhasil ditambahkan ✓')
     } catch (err) { showToast(err.message, 'error') }
     finally { setActionLoading(false) }
