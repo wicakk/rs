@@ -29,13 +29,72 @@ class ReportController extends Controller
         'Low'      => '72 Jam',
     ];
 
+    // ── Role yang boleh lihat semua data ──────────────────────────────────────
+    private const FULL_ACCESS_ROLES = ['super_admin', 'admin', 'manager'];
+
+    // ── Helper: cek apakah user punya akses penuh ─────────────────────────────
+    private function hasFullAccess($user): bool
+    {
+        return in_array($user->role, self::FULL_ACCESS_ROLES);
+    }
+
+    /**
+     * Terapkan pembatasan data berdasarkan role user yang login.
+     *
+     * Role logic:
+     *   - super_admin / admin / manager → lihat semua data (no restriction)
+     *   - supervisor                    → hanya data departemen sendiri
+     *   - user biasa                    → hanya data milik dirinya sendiri
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder $query
+     * @param  \App\Models\User                      $user
+     * @param  string                                $type  'ticket' | 'asset'
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    private function scopeByRole($query, $user, string $type = 'ticket')
+    {
+        // Admin / Manager / Super Admin → tidak ada pembatasan
+        if ($this->hasFullAccess($user)) {
+            return $query;
+        }
+
+        if ($type === 'ticket') {
+            // Supervisor → filter berdasarkan departemen requester
+            if ($user->role === 'supervisor') {
+                return $query->whereHas('requester', fn($q) =>
+                    $q->where('department', $user->department)
+                );
+            }
+
+            // User biasa → hanya tiket yang dia buat atau ditugaskan kepadanya
+            return $query->where(function ($q) use ($user) {
+                $q->where('requester_id', $user->id)
+                  ->orWhere('assigned_to', $user->id);
+            });
+        }
+
+        if ($type === 'asset') {
+            // Supervisor → filter aset berdasarkan departemen
+            if ($user->role === 'supervisor') {
+                return $query->where('department', $user->department);
+            }
+
+            // User biasa → hanya aset yang dimiliki/dipinjam olehnya
+            return $query->where('user_id', $user->id);
+        }
+
+        return $query;
+    }
+
     // ── Helper: apply common filters (from, to, user_id, status) ke query Ticket ──
     private function applyTicketFilters($query, Request $request)
     {
-        if ($request->filled('from'))    $query->whereDate('created_at', '>=', $request->from);
-        if ($request->filled('to'))      $query->whereDate('created_at', '<=', $request->to);
-        if ($request->filled('status'))  $query->where('status', $request->status);
+        if ($request->filled('from'))   $query->whereDate('created_at', '>=', $request->from);
+        if ($request->filled('to'))     $query->whereDate('created_at', '<=', $request->to);
+        if ($request->filled('status')) $query->where('status', $request->status);
 
+        // user_id filter hanya berlaku jika user login adalah admin/manager
+        // (untuk user biasa, data sudah dibatasi via scopeByRole)
         if ($request->filled('user_id')) {
             $uid = $request->user_id;
             $query->where(function ($q) use ($uid) {
@@ -47,15 +106,21 @@ class ReportController extends Controller
         return $query;
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // IT SUPPORT REPORTS
+    // ══════════════════════════════════════════════════════════════════════════
+
     /**
      * GET /api/reports/summary
      */
     public function summary(Request $request): JsonResponse
     {
+        $user  = $request->user();
         $month = $request->get('month', now()->month);
         $year  = $request->get('year',  now()->year);
 
         $base = Ticket::whereMonth('created_at', $month)->whereYear('created_at', $year);
+        $base = $this->scopeByRole($base, $user, 'ticket');
         $base = $this->applyTicketFilters($base, $request);
 
         $resolvedThisMonth = (clone $base)->whereIn('status', ['Resolved', 'Closed'])->count();
@@ -65,15 +130,19 @@ class ReportController extends Controller
             ->whereNotNull('resolution_time_minutes')
             ->avg('resolution_time_minutes') ?? 0;
 
-        $slaQuery  = $this->applyTicketFilters(Ticket::whereIn('status', ['Resolved', 'Closed']), $request);
+        $slaQuery  = Ticket::whereIn('status', ['Resolved', 'Closed']);
+        $slaQuery  = $this->scopeByRole($slaQuery, $user, 'ticket');
+        $slaQuery  = $this->applyTicketFilters($slaQuery, $request);
         $slaTotal  = (clone $slaQuery)->count();
         $slaOnTime = (clone $slaQuery)->where('sla_breached', false)->count();
         $slaScore  = $slaTotal > 0 ? round(($slaOnTime / $slaTotal) * 100) : 100;
 
-        $openQuery = $this->applyTicketFilters(
-            Ticket::whereNotIn('status', ['Resolved', 'Closed']),
-            (clone $request)->replace(array_merge($request->all(), ['status' => '']))
-        );
+        $openQuery = Ticket::whereNotIn('status', ['Resolved', 'Closed']);
+        $openQuery = $this->scopeByRole($openQuery, $user, 'ticket');
+
+        $overdueQuery = Ticket::overdue();
+        $overdueQuery = $this->scopeByRole($overdueQuery, $user, 'ticket');
+        $overdueQuery = $this->applyTicketFilters($overdueQuery, $request);
 
         return response()->json([
             'total_tickets'   => (clone $base)->count(),
@@ -83,7 +152,11 @@ class ReportController extends Controller
             'avg_resolution'  => round($avgMinutes / 60, 1),
             'sla_score'       => $slaScore,
             'open_tickets'    => $openQuery->count(),
-            'overdue_tickets' => $this->applyTicketFilters(Ticket::overdue(), $request)->count(),
+            'overdue_tickets' => $overdueQuery->count(),
+            // info tambahan untuk frontend
+            'user_role'       => $user->role,
+            'user_department' => $user->department ?? null,
+            'is_full_access'  => $this->hasFullAccess($user),
         ]);
     }
 
@@ -92,7 +165,10 @@ class ReportController extends Controller
      */
     public function tickets(Request $request)
     {
+        $user = $request->user();
+
         $query = Ticket::with(['requester:id,name,department', 'assignee:id,name'])->latest();
+        $query = $this->scopeByRole($query, $user, 'ticket');
         $query = $this->applyTicketFilters($query, $request);
 
         $format = strtolower($request->get('format', 'json'));
@@ -124,13 +200,18 @@ class ReportController extends Controller
      */
     public function sla(Request $request)
     {
+        $user = $request->user();
+
         $rows = [];
         foreach (['Critical', 'High', 'Medium', 'Low'] as $p) {
             $base = Ticket::where('priority', $p)->whereIn('status', ['Resolved', 'Closed']);
+            $base = $this->scopeByRole($base, $user, 'ticket');
 
             if ($request->filled('from'))    $base->whereDate('created_at', '>=', $request->from);
             if ($request->filled('to'))      $base->whereDate('created_at', '<=', $request->to);
-            if ($request->filled('user_id')) {
+
+            // Filter user_id hanya untuk admin/manager
+            if ($this->hasFullAccess($user) && $request->filled('user_id')) {
                 $uid = $request->user_id;
                 $base->where(function ($q) use ($uid) {
                     $q->where('requester_id', $uid)->orWhere('assigned_to', $uid);
@@ -163,14 +244,30 @@ class ReportController extends Controller
      */
     public function technicians(Request $request)
     {
+        $user = $request->user();
+
         $techQuery = User::technicians();
 
-        if ($request->filled('user_id')) {
-            $techQuery->where('id', $request->user_id);
+        if ($this->hasFullAccess($user)) {
+            // Admin/manager: bisa filter ke teknisi tertentu via user_id
+            if ($request->filled('user_id')) {
+                $techQuery->where('id', $request->user_id);
+            }
+        } else {
+            // User biasa / supervisor: hanya lihat performa dirinya sendiri
+            $techQuery->where('id', $user->id);
         }
 
-        $techs = $techQuery->get()->map(function ($u) use ($request) {
+        $techs = $techQuery->get()->map(function ($u) use ($request, $user) {
             $base = Ticket::where('assigned_to', $u->id);
+
+            // Terapkan scope berdasarkan role user yang sedang login
+            // (bukan role teknisi yang sedang dilihat)
+            if (!$this->hasFullAccess($user) && $user->role === 'supervisor') {
+                $base->whereHas('requester', fn($q) =>
+                    $q->where('department', $user->department)
+                );
+            }
 
             if ($request->filled('from')) $base->whereDate('created_at', '>=', $request->from);
             if ($request->filled('to'))   $base->whereDate('created_at', '<=', $request->to);
@@ -207,7 +304,10 @@ class ReportController extends Controller
      */
     public function assets(Request $request)
     {
+        $user = $request->user();
+
         $query = Asset::orderBy('category')->orderBy('name');
+        $query = $this->scopeByRole($query, $user, 'asset');
 
         if ($request->filled('from'))   $query->whereDate('purchase_date', '>=', $request->from);
         if ($request->filled('to'))     $query->whereDate('purchase_date', '<=', $request->to);
@@ -569,7 +669,6 @@ class ReportController extends Controller
         $projects   = $query->get();
         $projectIds = $projects->pluck('id');
 
-        // ✅ FIX: hitung task via pivot task_assignees, bukan assigned_to
         $totalTasks = Task::whereIn('project_id', $projectIds)->count();
 
         $completedTasks = Task::whereIn('project_id', $projectIds)
@@ -586,6 +685,9 @@ class ReportController extends Controller
             'total_tasks'     => $totalTasks,
             'completed_tasks' => $completedTasks,
             'avg_progress'    => $avgProgress,
+            // info tambahan untuk frontend
+            'user_role'       => $user->role,
+            'is_full_access'  => $this->hasFullAccess($user),
         ]);
     }
 
@@ -636,7 +738,6 @@ class ReportController extends Controller
                 'completed_tasks' => $completed,
                 'creator_name'    => $project->creator->name ?? '—',
                 'members'         => $project->members->pluck('name')->all(),
-                // ✅ FIX: start_date selalu null, pakai created_at sebagai tanggal mulai
                 'start_date'      => $project->created_at?->locale('id')->isoFormat('D MMM YYYY'),
                 'due_date'        => $project->due_date ? \Carbon\Carbon::parse($project->due_date)->locale('id')->isoFormat('D MMM YYYY') : null,
             ];
@@ -651,7 +752,6 @@ class ReportController extends Controller
 
     /**
      * GET /api/project-reports/tasks
-     * ✅ FIX: load assignees via pivot task_assignees (many-to-many)
      */
     public function tasks(Request $request): JsonResponse
     {
@@ -662,7 +762,6 @@ class ReportController extends Controller
             ->with([
                 'project:id,name',
                 'column:id,name',
-                // ✅ Gunakan relasi assignees (pivot), bukan assignee (belongs-to)
                 'assignees:id,name',
             ]);
 
@@ -670,9 +769,13 @@ class ReportController extends Controller
         if ($request->filled('to'))       $query->whereDate('created_at', '<=', $request->input('to'));
         if ($request->filled('priority')) $query->where('priority', $request->input('priority'));
 
-        // ✅ FIX: filter by user_id via pivot task_assignees
-        if ($request->filled('user_id')) {
+        // Filter user_id: admin/manager bisa filter ke siapapun,
+        // user biasa otomatis hanya lihat task miliknya sendiri
+        if ($this->hasFullAccess($user) && $request->filled('user_id')) {
             $query->whereHas('assignees', fn($q) => $q->where('users.id', $request->input('user_id')));
+        } elseif (!$this->hasFullAccess($user) && $user->role !== 'supervisor') {
+            // User biasa: hanya tampilkan task yang dia kerjakan
+            $query->whereHas('assignees', fn($q) => $q->where('users.id', $user->id));
         }
 
         $tasks = $query->latest()->get()->map(fn($task) => [
@@ -680,7 +783,6 @@ class ReportController extends Controller
             'task_title'    => $task->title,
             'column_name'   => $task->column->name ?? '—',
             'priority'      => $task->priority,
-            // ✅ Tampilkan semua assignee sebagai string gabungan
             'assigned_name' => $task->assignees->isNotEmpty()
                                     ? $task->assignees->pluck('name')->implode(', ')
                                     : 'Unassigned',
@@ -697,34 +799,35 @@ class ReportController extends Controller
 
     /**
      * GET /api/project-reports/team-performance
-     * ✅ FIX: semua query task pakai pivot task_assignees, bukan assigned_to
      */
     public function teamPerformance(Request $request): JsonResponse
     {
         $user       = $request->user();
         $projectIds = $this->getProjectsForUser($user)->pluck('id');
 
-        // ✅ FIX: cari user yang ada di pivot task_assignees, bukan assigned_to
         $query = User::where(function ($q) use ($projectIds) {
             $q->whereHas('projects', fn($pq) => $pq->whereIn('project_id', $projectIds))
               ->orWhereHas('assignedTasks', fn($tq) => $tq->whereIn('project_id', $projectIds));
         });
 
-        // Filter by user_id jika ada
-        if ($request->filled('user_id')) {
-            $query->where('id', $request->input('user_id'));
+        // Filter user_id: admin/manager bisa filter ke siapapun,
+        // user biasa hanya lihat performa dirinya sendiri
+        if ($this->hasFullAccess($user)) {
+            if ($request->filled('user_id')) {
+                $query->where('id', $request->input('user_id'));
+            }
+        } else {
+            $query->where('id', $user->id);
         }
 
         $users = $query->get()->map(function ($u) use ($projectIds, $request) {
-            // ✅ FIX: hitung task via pivot task_assignees
             $baseTask = Task::whereIn('project_id', $projectIds)
                 ->whereHas('assignees', fn($q) => $q->where('users.id', $u->id));
 
-            // Terapkan filter tanggal jika ada
             if ($request->filled('from')) $baseTask->whereDate('created_at', '>=', $request->input('from'));
             if ($request->filled('to'))   $baseTask->whereDate('created_at', '<=', $request->input('to'));
 
-            $assignedTasks = (clone $baseTask)->count();
+            $assignedTasks  = (clone $baseTask)->count();
 
             $completedTasks = (clone $baseTask)
                 ->whereHas('column', fn($q) => $q->where('name', 'Prod'))
@@ -764,16 +867,30 @@ class ReportController extends Controller
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /**
-     * ✅ FIX: Super Admin bisa lihat semua project
+     * Batasi project query berdasarkan role user:
+     *  - super_admin / admin / manager → semua project
+     *  - supervisor                    → project yang dia buat, atau jadi member,
+     *                                    atau project yang anggotanya se-departemen
+     *  - user biasa                    → hanya project yang dia buat / jadi member
      */
     private function getProjectsForUser($user)
     {
-        // Super Admin: lihat semua project
-        if (in_array($user->role, ['super_admin', 'admin'])) {
+        if ($this->hasFullAccess($user)) {
             return Project::query();
         }
 
-        // User biasa: hanya project yang dibuat atau yang dia jadi member
+        if ($user->role === 'supervisor') {
+            return Project::where(function ($q) use ($user) {
+                $q->where('created_by', $user->id)
+                  ->orWhereHas('members', fn($m) => $m->where('user_id', $user->id))
+                  ->orWhereHas('members', fn($m) =>
+                      $m->whereHas('user', fn($u) =>
+                          $u->where('department', $user->department)
+                      )
+                  );
+            });
+        }
+
         return Project::where(function ($q) use ($user) {
             $q->where('created_by', $user->id)
               ->orWhereHas('members', fn($m) => $m->where('user_id', $user->id));
