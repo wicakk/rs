@@ -315,6 +315,33 @@ const CommentsSection = ({ comments, comment, onCommentChange, onCommentSubmit, 
   </div>
 )
 
+// ✅ Toast notification
+const Toast = ({ toast, theme }) => {
+  if (!toast) return null
+  const isSuccess = toast.type === 'success'
+  return (
+    <div
+      className="fixed top-5 right-5 z-[9999] flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl transition-all"
+      style={{
+        background: isSuccess ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+        border: `1px solid ${isSuccess ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)'}`,
+        backdropFilter: 'blur(8px)',
+        minWidth: 220,
+      }}
+    >
+      <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+        style={{ background: isSuccess ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)' }}>
+        {isSuccess
+          ? <CheckCircle2 size={14} style={{ color: '#10b981' }} />
+          : <AlertCircle size={14} style={{ color: '#ef4444' }} />}
+      </div>
+      <span className="text-sm font-medium" style={{ color: isSuccess ? '#10b981' : '#ef4444' }}>
+        {toast.message}
+      </span>
+    </div>
+  )
+}
+
 const DetailInfoSidebar = ({ ticket, currentUser, agents, onAssign, assigning, onStatusChange, theme }) => (
   <div className="flex flex-col gap-4">
     <div className="rounded-xl p-5 flex flex-col gap-3.5" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
@@ -405,6 +432,12 @@ const TicketDetailPage = () => {
   const [resolveModal, setResolveModal] = useState(false)
   const [resolutionNotes, setResolutionNotes] = useState('')
   const [resolving, setResolving] = useState(false)
+  const [toast, setToast] = useState(null)
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3000)
+  }
 
   const fetchTicket = async () => {
     setLoading(true); setError(null)
@@ -546,8 +579,15 @@ const TicketDetailPage = () => {
         const res = await authFetch(`/api/tickets/${id}/assign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assigned_to: agentId }) })
         if (!res.ok) throw new Error('Gagal mengassign tiket.')
       }
-      await fetchTicket()
-    } catch (e) { alert(e.message) } finally { setAssigning(false) }
+      const restrictedRoles = ['admin', 'super_admin', 'manager_it', 'manager']
+      if (!restrictedRoles.includes(currentUser?.role)) {
+        showToast(agentId === null ? 'Assignment berhasil dihapus.' : 'Tiket berhasil di-assign!')
+        setTimeout(() => navigate('/tickets'), 1500)
+      } else {
+        showToast(agentId === null ? 'Assignment berhasil dihapus.' : 'Tiket berhasil di-assign!')
+        await fetchTicket()
+      }
+    } catch (e) { showToast(e.message, 'error') } finally { setAssigning(false) }
   }
 
   const handleDeleteComment = async (commentId) => {
@@ -588,6 +628,7 @@ const TicketDetailPage = () => {
 
   return (
     <>
+      <Toast toast={toast} theme={theme} />
       <div className="flex flex-col gap-4 sm:gap-5">
         <Breadcrumb navigate={navigate} ticket={t} onRefresh={fetchTicket} theme={theme} />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
