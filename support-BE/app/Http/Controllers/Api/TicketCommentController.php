@@ -7,6 +7,7 @@ use App\Models\Ticket;
 use App\Models\TicketComment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Storage;
 
 class TicketCommentController extends Controller
 {
@@ -42,7 +43,7 @@ class TicketCommentController extends Controller
             'is_internal' => $isInternal,
         ]);
 
-        // ✅ Simpan attachment dengan comment_id agar tampil di dalam bubble komentar
+        // Simpan attachment dengan comment_id agar tampil di dalam bubble komentar
         if ($request->hasFile('attachments')) {
             foreach ($request->file('attachments') as $file) {
                 $filename = uniqid() . '_' . time() . '.' . $file->getClientOriginalExtension();
@@ -74,12 +75,35 @@ class TicketCommentController extends Controller
 
         // Hapus file dari storage saat komentar dihapus
         foreach ($comment->attachments as $attachment) {
-            \Storage::disk('public')->delete($attachment->path);
+            Storage::disk('public')->delete($attachment->path);
             $attachment->delete();
         }
 
         $comment->delete();
 
         return response()->json(['message' => 'Komentar dihapus.']);
+    }
+
+    /**
+     * ✅ FIX: GET /api/tickets/{ticket}/comments/{comment}/attachments/{attachment}/download
+     * Download attachment komentar via authenticated route.
+     */
+    public function downloadAttachment(Request $request, Ticket $ticket, TicketComment $comment, $attachmentId): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $attachment = $comment->attachments()->findOrFail($attachmentId);
+
+        $user = $request->user();
+        if (!in_array($user->role, ['admin', 'super_admin', 'manager_it'])
+            && $ticket->requester_id !== $user->id
+            && $ticket->assigned_to  !== $user->id) {
+            abort(403, 'Akses ditolak.');
+        }
+
+        abort_unless(Storage::disk('public')->exists($attachment->path), 404, 'File tidak ditemukan.');
+
+        return Storage::disk('public')->download(
+            $attachment->path,
+            $attachment->original_name ?? $attachment->filename
+        );
     }
 }

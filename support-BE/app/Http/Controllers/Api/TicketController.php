@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class TicketController extends Controller
@@ -143,17 +144,14 @@ class TicketController extends Controller
      */
     public function show(Request $request, Ticket $ticket): JsonResponse
     {
-        // Otorisasi akses berdasarkan role
         $user = $request->user();
 
         if (!in_array($user->role, ['admin', 'super_admin', 'manager', 'manager_it'])) {
             if ($user->role === 'it_support') {
-                // it_support hanya boleh lihat tiket miliknya atau yang unassigned
                 if ($ticket->assigned_to !== null && $ticket->assigned_to !== $user->id) {
                     return response()->json(['message' => 'Akses ditolak.'], 403);
                 }
             } else {
-                // User biasa hanya boleh lihat tiket miliknya
                 if ($ticket->requester_id !== $user->id) {
                     return response()->json(['message' => 'Akses ditolak.'], 403);
                 }
@@ -284,5 +282,28 @@ class TicketController extends Controller
             'path'          => $path,
         ]);
         return response()->json(['message' => 'File berhasil diupload.', 'attachment' => $attachment], 201);
+    }
+
+    /**
+     * ✅ FIX: GET /api/tickets/{ticket}/attachments/{attachment}/download
+     * Download attachment tiket via authenticated route.
+     */
+    public function downloadAttachment(Request $request, Ticket $ticket, $attachmentId): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $attachment = $ticket->attachments()->findOrFail($attachmentId);
+
+        $user = $request->user();
+        if (!in_array($user->role, ['admin', 'super_admin', 'manager_it'])
+            && $ticket->requester_id !== $user->id
+            && $ticket->assigned_to  !== $user->id) {
+            abort(403, 'Akses ditolak.');
+        }
+
+        abort_unless(Storage::disk('public')->exists($attachment->path), 404, 'File tidak ditemukan.');
+
+        return Storage::disk('public')->download(
+            $attachment->path,
+            $attachment->original_name ?? $attachment->filename
+        );
     }
 }

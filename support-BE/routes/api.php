@@ -53,6 +53,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Attachments
     Route::post('tickets/{ticket}/attachments', [TicketController::class, 'uploadAttachment']);
 
+    // ✅ FIX: Download attachment via authenticated route (tidak expose URL publik)
+    Route::get('tickets/{ticket}/attachments/{attachment}/download',                        [TicketController::class, 'downloadAttachment']);
+    Route::get('tickets/{ticket}/comments/{comment}/attachments/{attachment}/download',     [TicketCommentController::class, 'downloadAttachment']);
+
     // Assets
     Route::apiResource('assets', AssetController::class);
     Route::post('assets/{asset}/assign',    [AssetController::class, 'assign']);
@@ -87,8 +91,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/timeline', [ReportController::class, 'timeline']);
     });
 
-
-
     // Server Monitoring
     Route::get('monitoring',                [ServerMonitorController::class, 'index']);
     Route::get('monitoring/{server}',       [ServerMonitorController::class, 'show']);
@@ -113,7 +115,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('projects/{project}/tasks/{task}/comments',             [ProjectController::class, 'storeComment']);
     Route::delete('projects/{project}/tasks/{task}/comments/{comment}', [ProjectController::class, 'destroyComment']);
 
-    // ✅ Pastikan 2 baris ini ada di sini:
     Route::get('projects/{project}/tasks/{task}/column-assignees',  [ProjectController::class, 'getColumnAssignees']);
     Route::post('projects/{project}/tasks/{task}/column-assignees', [ProjectController::class, 'saveColumnAssignees']);
 
@@ -152,9 +153,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('projects/{project}/tasks/{task}', [ProjectController::class, 'destroyTask']);
 
     // Project attachments
-    Route::post('projects/{project}/attachments',                        [ProjectController::class, 'uploadProjectAttachment']);
-    Route::delete('projects/{project}/attachments/{attachment}',         [ProjectController::class, 'deleteProjectAttachment']);
-    Route::post('projects/{project}/tasks/{task}/attachments',           [ProjectController::class, 'uploadAttachment']);
+    Route::post('projects/{project}/attachments',                             [ProjectController::class, 'uploadProjectAttachment']);
+    Route::delete('projects/{project}/attachments/{attachment}',              [ProjectController::class, 'deleteProjectAttachment']);
+    Route::post('projects/{project}/tasks/{task}/attachments',                [ProjectController::class, 'uploadAttachment']);
     Route::delete('projects/{project}/tasks/{task}/attachments/{attachment}', [ProjectController::class, 'deleteAttachment']);
 
     // Roles — hanya super_admin
@@ -162,14 +163,4 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('roles',                    [RoleController::class, 'index']);
         Route::put('roles/{role}/permissions', [RoleController::class, 'syncPermissions']);
     });
-
-    Route::middleware('auth:sanctum')->group(function () {
-    // ... existing routes ...
-
-    
-
-
-    
-});
-
 });
