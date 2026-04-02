@@ -10,7 +10,7 @@ const fmt = (iso) => !iso ? '—' : new Date(iso).toLocaleString('id-ID', { day:
 const fmtDate = (val) => !val ? '—' : new Date(val).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 const fmtRp = (val) => !val ? '—' : new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val)
 
-const fileUrl = (a) => a?.url || (a?.path ? `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/storage/${a.path}` : null)
+const fileUrl = (a) => a?.url || (a?.path ? `${import.meta.env.VITE_API_URL || 'https://kerjaanku.id'}/storage/${a.path}` : null)
 
 // Role yang boleh di-assign tiket
 const ASSIGNABLE_ROLES = ['it_support', 'manager_it']
