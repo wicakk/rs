@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Plus, Search, SlidersHorizontal, RefreshCw, Tag,
   ChevronLeft, ChevronRight, Paperclip, X as XIcon,
-  FileText, ImageIcon, File, Trash2,
+  FileText, ImageIcon, File, Trash2, Pencil,
 } from 'lucide-react'
 import { useAuth } from '../context/AppContext'
 import { useTheme } from '../context/ThemeContext'
@@ -100,7 +100,6 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder = 'P
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', width: '100%' }}>
-      {/* Trigger button */}
       <button
         type="button"
         disabled={disabled}
@@ -128,7 +127,6 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder = 'P
         </svg>
       </button>
 
-      {/* Dropdown */}
       {open && (
         <div style={{
           position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 9999,
@@ -137,7 +135,6 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder = 'P
           overflow: 'hidden',
           animation: 'hwSlideDown 0.15s ease',
         }}>
-          {/* Search input */}
           <div style={{ padding: '8px 8px 4px', borderBottom: `1px solid ${theme.border}` }}>
             <div style={{ position: 'relative' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={theme.textMuted} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
@@ -149,7 +146,7 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder = 'P
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Cari kategori..."
+                placeholder="Cari..."
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   background: theme.surfaceAlt, border: `1px solid ${theme.border}`,
@@ -160,8 +157,6 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder = 'P
               />
             </div>
           </div>
-
-          {/* Options list */}
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {filtered.length === 0
               ? <div style={{ padding: '10px 14px', fontSize: 12, color: theme.textMuted, textAlign: 'center' }}>Tidak ditemukan</div>
@@ -195,14 +190,15 @@ const SearchableSelect = ({ options, value, onChange, disabled, placeholder = 'P
   )
 }
 
-// ─── NewTicketModal ───────────────────────────────────────────
-const PRIORITIES   = ['Low', 'Medium', 'High', 'Critical']
-const EMPTY_TICKET = { title: '', category: '', priority: 'Medium', description: '' }
-const MAX_FILES    = 5
-const MAX_MB       = 10
-
+// ─── Constants ────────────────────────────────────────────────
+const PRIORITIES         = ['Low', 'Medium', 'High', 'Critical']
+const STATUSES           = ['Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed']
+const ASSET_STATUS_OPTIONS = ['Active', 'Inactive', 'Under Repair', 'Disposed']
 const ASSET_KATEGORI_FALLBACK = ['Laptop', 'Desktop', 'Printer', 'Monitor', 'Server', 'UPS', 'Switch', 'Other']
-const ASSET_STATUS_OPTIONS    = ['Active', 'Inactive', 'Under Repair', 'Disposed']
+const MAX_FILES = 5
+const MAX_MB    = 10
+
+const EMPTY_TICKET   = { title: '', category: '', priority: 'Medium', description: '' }
 const EMPTY_HARDWARE = {
   nama_aset: '', asset_kategori: '', asset_status: 'Active',
   brand: '', model: '', serial_number: '', lokasi: '',
@@ -214,28 +210,322 @@ const fileIcon = (file) => {
   if (file.type === 'application/pdf') return <FileText size={14} color="#EF4444" />
   return <File size={14} color="#6B7FA3" />
 }
-
 const formatBytes = (bytes) => {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
-
 const fmtSla = (iso) => {
   if (!iso) return '—'
   const d = new Date(iso)
   if (isNaN(d)) return iso
-  const tgl  = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
-  const jam  = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  const tgl = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+  const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
   return `${tgl}  ${jam}`
 }
+
+// ─── EditTicketModal ──────────────────────────────────────────
+const EditTicketModal = ({ ticket, onClose, onSubmit, theme }) => {
+  const { authFetch } = useAuth()
+  const { categoryNames, loading: catLoading } = useTicketCategories()
+  const { categoryNames: assetCatNames, loading: assetCatLoading } = useAssetCategories()
+
+  const [form, setForm]   = useState({
+    title:       ticket.title       ?? '',
+    description: ticket.description ?? '',
+    category:    ticket.category    ?? '',
+    priority:    ticket.priority    ?? 'Medium',
+    status:      ticket.status      ?? 'Open',
+  })
+
+  const existingHw = ticket.hardware_asset ?? ticket.hardwareAsset ?? null
+  const [hardware, setHardware] = useState({
+    nama_aset:      existingHw?.nama_aset      ?? '',
+    asset_kategori: existingHw?.kategori       ?? '',
+    asset_status:   existingHw?.status         ?? 'Active',
+    brand:          existingHw?.brand          ?? '',
+    model:          existingHw?.model          ?? '',
+    serial_number:  existingHw?.serial_number  ?? '',
+    lokasi:         existingHw?.lokasi         ?? '',
+    pengguna:       existingHw?.pengguna       ?? '',
+    tgl_beli:       existingHw?.tgl_beli       ?? '',
+    harga_beli:     existingHw?.harga_beli     ?? '',
+    garansi_sd:     existingHw?.garansi_sd     ?? '',
+    catatan:        existingHw?.catatan        ?? '',
+  })
+
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState({})
+
+  const isHardware = form.category === 'Hardware'
+
+  const set  = (k) => (e) => { setForm(f => ({ ...f, [k]: e.target.value })); setErrors(er => ({ ...er, [k]: undefined })) }
+  const setHw = (k) => (e) => setHardware(h => ({ ...h, [k]: e.target.value }))
+
+  const displayCategories = categoryNames.length > 0
+    ? categoryNames
+    : ['Network', 'Email', 'Printer', 'Software', 'Hardware', 'Server', 'Security', 'Others']
+
+  const validate = () => {
+    const e = {}
+    if (!form.title.trim())       e.title       = 'Wajib diisi'
+    if (!form.description.trim()) e.description = 'Wajib diisi'
+    return e
+  }
+
+  const handleSubmit = async () => {
+    const e = validate()
+    if (Object.keys(e).length) { setErrors(e); return }
+    setSaving(true)
+    try {
+      const body = {
+        title:       form.title,
+        description: form.description,
+        category:    form.category,
+        priority:    form.priority,
+        status:      form.status,
+      }
+      if (isHardware) {
+        body.hardware = {
+          nama_aset:     hardware.nama_aset     || null,
+          kategori:      hardware.asset_kategori || null,
+          status:        hardware.asset_status   || null,
+          brand:         hardware.brand          || null,
+          model:         hardware.model          || null,
+          serial_number: hardware.serial_number  || null,
+          lokasi:        hardware.lokasi         || null,
+          pengguna:      hardware.pengguna       || null,
+          tgl_beli:      hardware.tgl_beli       || null,
+          harga_beli:    hardware.harga_beli ? Number(hardware.harga_beli) : null,
+          garansi_sd:    hardware.garansi_sd     || null,
+          catatan:       hardware.catatan        || null,
+        }
+      }
+
+      const res = await authFetch(`/api/tickets/${ticket.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        const msg = errData.message
+          || Object.values(errData.errors ?? {}).flat().join(', ')
+          || 'Gagal memperbarui tiket'
+        throw new Error(msg)
+      }
+
+      onSubmit()
+    } catch (err) {
+      setErrors({ _global: err.message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputStyle = {
+    width: '100%', background: theme.surfaceAlt,
+    border: `1px solid ${theme.border}`, borderRadius: 8,
+    padding: '8px 12px', fontSize: 13, color: theme.text,
+    outline: 'none', boxSizing: 'border-box',
+    transition: 'border-color 0.2s', fontFamily: 'inherit',
+  }
+  const labelStyle = {
+    display: 'block', fontSize: 10, fontWeight: 600,
+    textTransform: 'uppercase', letterSpacing: '0.08em',
+    color: theme.textMuted, marginBottom: 6,
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '12px', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 18, width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.4)' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${theme.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: theme.accentSoft ?? 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Pencil size={13} color={theme.accent} />
+            </div>
+            <div>
+              <p style={{ color: theme.text, fontWeight: 700, fontSize: 15, margin: 0 }}>Edit Tiket</p>
+              <p style={{ color: theme.textMuted, fontSize: 11, margin: 0, fontFamily: 'monospace' }}>{ticket.ticket_number ?? `#${ticket.id}`}</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ color: theme.textMuted, background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px', overflowY: 'auto', maxHeight: '65vh' }}>
+
+          {/* Title */}
+          <div>
+            <label style={labelStyle}>Judul <span style={{ color: theme.danger }}>*</span></label>
+            <input style={{ ...inputStyle, borderColor: errors.title ? theme.danger : theme.border }}
+              value={form.title} onChange={set('title')} placeholder="Deskripsi singkat masalah..." />
+            {errors.title && <p style={{ color: theme.danger, fontSize: 11, marginTop: 4 }}>{errors.title}</p>}
+          </div>
+
+          {/* Category + Priority */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Kategori</label>
+              <SearchableSelect
+                options={displayCategories}
+                value={form.category}
+                onChange={(val) => { setForm(f => ({ ...f, category: val })); setErrors(e => ({ ...e, category: undefined })) }}
+                disabled={catLoading}
+                theme={theme}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Prioritas</label>
+              <select style={inputStyle} value={form.priority} onChange={set('priority')}>
+                {PRIORITIES.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label style={labelStyle}>Status</label>
+            <select style={inputStyle} value={form.status} onChange={set('status')}>
+              {STATUSES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={labelStyle}>Deskripsi <span style={{ color: theme.danger }}>*</span></label>
+            <textarea style={{ ...inputStyle, minHeight: 96, resize: 'vertical', borderColor: errors.description ? theme.danger : theme.border }}
+              value={form.description} onChange={set('description')} placeholder="Jelaskan masalah secara detail..." />
+            {errors.description && <p style={{ color: theme.danger, fontSize: 11, marginTop: 4 }}>{errors.description}</p>}
+          </div>
+
+          {/* Hardware Asset Section */}
+          {isHardware && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 12,
+              border: `1.5px solid ${theme.borderAccent ?? '#3b82f633'}`,
+              borderRadius: 10, padding: 16,
+              background: theme.accentSoft ?? 'rgba(59,130,246,0.04)',
+              animation: 'hwSlideDown 0.22s ease',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={theme.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+                </svg>
+                <span style={{ fontSize: 10, fontWeight: 700, color: theme.accent, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Informasi Aset Hardware
+                </span>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Nama Aset</label>
+                <input style={inputStyle} value={hardware.nama_aset} onChange={setHw('nama_aset')} placeholder="cth: Dell Latitude 5420" />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Kategori Aset</label>
+                  <SearchableSelect
+                    options={assetCatLoading ? [] : (assetCatNames.length > 0 ? assetCatNames : ASSET_KATEGORI_FALLBACK)}
+                    value={hardware.asset_kategori}
+                    onChange={(val) => setHardware(h => ({ ...h, asset_kategori: val }))}
+                    disabled={assetCatLoading}
+                    theme={theme}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Status</label>
+                  <select style={inputStyle} value={hardware.asset_status} onChange={setHw('asset_status')}>
+                    {ASSET_STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Brand</label>
+                  <input style={inputStyle} value={hardware.brand} onChange={setHw('brand')} placeholder="Dell" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Model</label>
+                  <input style={inputStyle} value={hardware.model} onChange={setHw('model')} placeholder="Latitude 5420" />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Serial Number</label>
+                <input style={inputStyle} value={hardware.serial_number} onChange={setHw('serial_number')} placeholder="SN-XXXXXXXX" />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Lokasi</label>
+                <input style={inputStyle} value={hardware.lokasi} onChange={setHw('lokasi')} placeholder="Lokasi Aset" />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Pengguna <span style={{ color: theme.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(opsional)</span></label>
+                  <input style={inputStyle} value={hardware.pengguna} onChange={setHw('pengguna')} placeholder="(opsional)" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Tgl Beli</label>
+                  <input style={inputStyle} type="date" value={hardware.tgl_beli} onChange={setHw('tgl_beli')} />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Harga Beli (Rp)</label>
+                <input style={inputStyle} type="number" min="0" value={hardware.harga_beli} onChange={setHw('harga_beli')} placeholder="15000000" />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Garansi S/D</label>
+                <input style={inputStyle} type="date" value={hardware.garansi_sd} onChange={setHw('garansi_sd')} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Catatan <span style={{ color: theme.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(opsional)</span></label>
+                <textarea style={inputStyle} value={hardware.catatan} onChange={setHw('catatan')} placeholder="(opsional)" />
+              </div>
+            </div>
+          )}
+
+          {errors._global && (
+            <div style={{ padding: '10px 12px', background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.30)', borderRadius: 8, color: theme.danger, fontSize: 12 }}>
+              {errors._global}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '14px 20px', borderTop: `1px solid ${theme.border}`, gap: 8 }}>
+          <button onClick={onClose} disabled={saving}
+            style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.textMuted, fontSize: 13, cursor: 'pointer' }}>
+            Batal
+          </button>
+          <button onClick={handleSubmit} disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 8, background: theme.accent, color: '#fff', border: 'none', fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+            <Pencil size={13} />
+            {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── NewTicketModal ───────────────────────────────────────────
+const EMPTY_TICKET_NEW = { title: '', category: '', priority: 'Medium', description: '' }
 
 const NewTicketModal = ({ onClose, onSubmit, theme }) => {
   const { authFetch }             = useAuth()
   const { categoryNames, loading: catLoading } = useTicketCategories()
   const { categoryNames: assetCatNames, loading: assetCatLoading } = useAssetCategories()
   const { locationNames, loading: locLoading }                     = useLocations()
-  const [form, setForm]           = useState(EMPTY_TICKET)
+  const [form, setForm]           = useState(EMPTY_TICKET_NEW)
   const [files, setFiles]         = useState([])
   const [saving, setSaving]       = useState(false)
   const [errors, setErrors]       = useState({})
@@ -347,7 +637,6 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
     outline: 'none', boxSizing: 'border-box',
     transition: 'border-color 0.2s', fontFamily: 'inherit',
   }
-
   const labelStyle = {
     display: 'block', fontSize: 10, fontWeight: 600,
     textTransform: 'uppercase', letterSpacing: '0.08em',
@@ -377,21 +666,16 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {/* ── Kategori: SearchableSelect ── */}
             <div>
               <label style={labelStyle}>Kategori</label>
               <SearchableSelect
                 options={displayCategories}
                 value={form.category}
-                onChange={(val) => {
-                  setForm(f => ({ ...f, category: val }))
-                  setErrors(e => ({ ...e, category: undefined }))
-                }}
+                onChange={(val) => { setForm(f => ({ ...f, category: val })); setErrors(e => ({ ...e, category: undefined })) }}
                 disabled={catLoading}
                 theme={theme}
               />
             </div>
-
             <div>
               <label style={labelStyle}>Prioritas</label>
               <select style={inputStyle} value={form.priority} onChange={set('priority')}>
@@ -483,12 +767,10 @@ const NewTicketModal = ({ onClose, onSubmit, theme }) => {
                 <label style={labelStyle}>Harga Beli (Rp)</label>
                 <input style={inputStyle} type="number" min="0" value={hardware.harga_beli} onChange={setHw('harga_beli')} placeholder="15000000" />
               </div>
-
               <div>
                 <label style={labelStyle}>Garansi S/D</label>
                 <input style={inputStyle} type="date" value={hardware.garansi_sd} onChange={setHw('garansi_sd')} />
               </div>
-
               <div>
                 <label style={labelStyle}>Catatan <span style={{ color: theme.textDim, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(opsional)</span></label>
                 <textarea style={inputStyle} value={hardware.catatan} onChange={setHw('catatan')} placeholder="(opsional)" />
@@ -631,20 +913,20 @@ const TicketsPage = () => {
   const [total,         setTotal]         = useState(0)
   const [deleteTicket,  setDeleteTicket]  = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  // ── Edit state ──
+  const [editTicket,    setEditTicket]    = useState(null)
 
   const PER_PAGE    = 10
   const STATUS_TABS = ['All', 'Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed']
 
   useEffect(() => {
-    const isModalOpen = showNew || !!deleteTicket
+    const isModalOpen = showNew || !!deleteTicket || !!editTicket
     if (!isModalOpen) return
     window.history.pushState(null, '', window.location.href)
-    const handlePopState = () => {
-      window.history.pushState(null, '', window.location.href)
-    }
+    const handlePopState = () => window.history.pushState(null, '', window.location.href)
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [showNew, deleteTicket])
+  }, [showNew, deleteTicket, editTicket])
 
   const fetchTickets = useCallback(async (page = 1) => {
     setLoading(true); setError(null)
@@ -697,7 +979,7 @@ const TicketsPage = () => {
     </div>
   )
 
-  const isModalOpen = showNew || !!deleteTicket
+  const isModalOpen = showNew || !!deleteTicket || !!editTicket
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -772,12 +1054,23 @@ const TicketsPage = () => {
                       <td style={{ padding: '12px 16px', fontSize: 11, color: theme.textMuted, whiteSpace: 'nowrap' }}>{fmtSla(t.sla_deadline ?? t.sla)}</td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {/* Detail */}
                           <button onClick={e => { e.stopPropagation(); navigate(`/tickets/${t.id}`) }}
                             style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, color: theme.accent, border: `1px solid ${theme.borderAccent}`, borderRadius: 6, background: theme.accentSoft, cursor: 'pointer', whiteSpace: 'nowrap' }}
                             onMouseEnter={e => e.currentTarget.style.background = theme.accentGlow}
                             onMouseLeave={e => e.currentTarget.style.background = theme.accentSoft}>
                             Detail
                           </button>
+                          {/* Edit */}
+                          <button
+                            onClick={e => { e.stopPropagation(); setEditTicket(t) }}
+                            title="Edit tiket"
+                            style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.accent, cursor: 'pointer', flexShrink: 0 }}
+                            onMouseEnter={e => { e.currentTarget.style.background = theme.accentSoft ?? 'rgba(59,130,246,0.08)'; e.currentTarget.style.borderColor = theme.accent }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = theme.border }}>
+                            <Pencil size={11} />
+                          </button>
+                          {/* Delete */}
                           <button
                             onClick={e => { e.stopPropagation(); setDeleteTicket(t) }}
                             title="Hapus tiket"
@@ -810,6 +1103,15 @@ const TicketsPage = () => {
         <NewTicketModal theme={theme} onClose={() => setShowNew(false)} onSubmit={() => { setShowNew(false); fetchTickets(1) }} />
       )}
 
+      {editTicket && (
+        <EditTicketModal
+          ticket={editTicket}
+          theme={theme}
+          onClose={() => setEditTicket(null)}
+          onSubmit={() => { setEditTicket(null); fetchTickets(currentPage) }}
+        />
+      )}
+
       {deleteTicket && (
         <DeleteTicketModal
           ticket={deleteTicket}
@@ -823,4 +1125,4 @@ const TicketsPage = () => {
   )
 }
 
-export default TicketsPage
+export default TicketsPage  
