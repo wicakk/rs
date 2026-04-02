@@ -10,8 +10,6 @@ const fmt = (iso) => !iso ? '—' : new Date(iso).toLocaleString('id-ID', { day:
 const fmtDate = (val) => !val ? '—' : new Date(val).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 const fmtRp = (val) => !val ? '—' : new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val)
 
-const fileUrl = (a) => a?.url || (a?.path ? `${import.meta.env.VITE_API_URL || 'https://kerjaanku.id'}/storage/${a.path}` : null)
-
 // Role yang boleh di-assign tiket
 const ASSIGNABLE_ROLES = ['it_support', 'manager_it']
 
@@ -69,7 +67,6 @@ const AssignDropdown = ({ agents, current, onAssign, assigning, theme }) => {
   }, [])
   const filtered = agents.filter(a => a.name.toLowerCase().includes(search.toLowerCase()) || (a.email ?? '').toLowerCase().includes(search.toLowerCase()))
 
-  // Kelompokkan by role untuk tampilan yang lebih rapi
   const grouped = ASSIGNABLE_ROLES.reduce((acc, role) => {
     const members = filtered.filter(a => (a.role ?? '').toLowerCase() === role)
     if (members.length > 0) acc[role] = members
@@ -100,7 +97,6 @@ const AssignDropdown = ({ agents, current, onAssign, assigning, theme }) => {
             ) : (
               Object.entries(grouped).map(([role, members]) => (
                 <div key={role}>
-                  {/* Role group header */}
                   <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: theme.surfaceAlt, color: theme.textMuted, borderBottom: `1px solid ${theme.border}` }}>
                     {ROLE_LABEL[role] ?? role}
                   </div>
@@ -127,8 +123,8 @@ const AssignDropdown = ({ agents, current, onAssign, assigning, theme }) => {
   )
 }
 
-// ✅ Ticket title card — hanya tampilkan attachment yang TIDAK punya comment_id (attachment asli tiket)
-const TicketTitleCard = ({ ticket, theme }) => (
+// ✅ TicketTitleCard — attachment menggunakan authenticated download (button, bukan <a>)
+const TicketTitleCard = ({ ticket, theme, onDownload }) => (
   <div className="rounded-xl p-5 flex flex-col gap-3" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
     <div className="flex items-start justify-between gap-3">
       <h1 className="text-lg font-semibold leading-snug" style={{ color: theme.text }}>{ticket.title}</h1>
@@ -143,18 +139,22 @@ const TicketTitleCard = ({ ticket, theme }) => (
     {ticket.description && (
       <p className="text-sm leading-relaxed border-t pt-3 mt-1 whitespace-pre-wrap break-words" style={{ color: theme.text, borderColor: theme.border }}>{ticket.description}</p>
     )}
+    {/* ✅ FIX: Ganti <a href> menjadi button dengan authenticated download */}
     {ticket.attachments?.filter(a => !a.comment_id).length > 0 && (
       <div className="flex flex-wrap gap-2 pt-2 border-t" style={{ borderColor: theme.border }}>
-        {ticket.attachments.filter(a => !a.comment_id).map((a, i) => {
-          const url = fileUrl(a)
-          if (!url) return null
-          return (
-            <a key={i} href={url} target="_blank" rel="noreferrer" download={a.original_name ?? a.filename} className="flex items-center gap-1.5 text-xs rounded px-2 py-1 transition" style={{ color: theme.accent, background: theme.accentSoft, border: `1px solid ${theme.borderAccent}`, cursor: 'pointer' }} onMouseEnter={(e) => { e.currentTarget.style.opacity = 0.8 }} onMouseLeave={(e) => { e.currentTarget.style.opacity = 1 }}>
-              <Paperclip size={12} />
-              {a.original_name ?? a.filename ?? `Lampiran ${i + 1}`}
-            </a>
-          )
-        })}
+        {ticket.attachments.filter(a => !a.comment_id).map((a, i) => (
+          <button
+            key={i}
+            onClick={() => onDownload(a.id, a.original_name ?? a.filename ?? `Lampiran ${i + 1}`)}
+            className="flex items-center gap-1.5 text-xs rounded px-2 py-1 transition"
+            style={{ color: theme.accent, background: theme.accentSoft, border: `1px solid ${theme.borderAccent}`, cursor: 'pointer' }}
+            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+          >
+            <Paperclip size={12} />
+            {a.original_name ?? a.filename ?? `Lampiran ${i + 1}`}
+          </button>
+        ))}
       </div>
     )}
 
@@ -202,7 +202,8 @@ const TicketTitleCard = ({ ticket, theme }) => (
   </div>
 )
 
-const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting }) => {
+// ✅ FIX: CommentItem menerima prop onDownload, attachment pakai button bukan <a>
+const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting, onDownload }) => {
   const displayName = comment.user?.name ?? comment.user_name ?? comment.author ?? (comment.user_id ? `User #${comment.user_id}` : 'Unknown')
   const initials = displayName.charAt(0).toUpperCase()
   const bodyText = comment.body ?? comment.content ?? comment.message ?? ''
@@ -233,18 +234,22 @@ const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting })
         ) : (
           <p className="text-sm italic" style={{ color: theme.textMuted }}>— (komentar kosong)</p>
         )}
+        {/* ✅ FIX: Ganti <a href> menjadi button dengan authenticated download */}
         {comment.attachments?.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t" style={{ borderColor: theme.border }}>
-            {comment.attachments.map((a, idx) => {
-              const url = fileUrl(a)
-              if (!url) return null
-              return (
-                <a key={idx} href={url} target="_blank" rel="noreferrer" download={a.original_name ?? a.filename} className="flex items-center gap-1.5 text-xs rounded px-2 py-1 transition" style={{ color: theme.accent, background: theme.accentSoft, border: `1px solid ${theme.borderAccent}` }} onMouseEnter={(e) => e.currentTarget.style.opacity = 0.8} onMouseLeave={(e) => e.currentTarget.style.opacity = 1}>
-                  <Paperclip size={12} />
-                  {a.original_name ?? a.filename ?? `File ${idx + 1}`}
-                </a>
-              )
-            })}
+            {comment.attachments.map((a, idx) => (
+              <button
+                key={idx}
+                onClick={() => onDownload(a.id, a.original_name ?? a.filename ?? `File ${idx + 1}`, comment.id)}
+                className="flex items-center gap-1.5 text-xs rounded px-2 py-1 transition"
+                style={{ color: theme.accent, background: theme.accentSoft, border: `1px solid ${theme.borderAccent}`, cursor: 'pointer' }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+              >
+                <Paperclip size={12} />
+                {a.original_name ?? a.filename ?? `File ${idx + 1}`}
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -252,7 +257,8 @@ const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting })
   )
 }
 
-const CommentsSection = ({ comments, comment, onCommentChange, onCommentSubmit, submitting, theme, onFileSelect, selectedFiles, currentUser, onDeleteComment, deletingCommentId }) => (
+// ✅ FIX: CommentsSection menerima dan meneruskan prop onDownload ke CommentItem
+const CommentsSection = ({ comments, comment, onCommentChange, onCommentSubmit, submitting, theme, onFileSelect, selectedFiles, currentUser, onDeleteComment, deletingCommentId, onDownload }) => (
   <div className="rounded-xl overflow-hidden flex flex-col" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
     <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: theme.border }}>
       <MessageSquare size={16} style={{ color: theme.textMuted }} />
@@ -266,7 +272,16 @@ const CommentsSection = ({ comments, comment, onCommentChange, onCommentSubmit, 
         <p className="text-xs px-5 py-6 text-center" style={{ color: theme.textMuted }}>Belum ada komentar.</p>
       ) : (
         comments.map((c, i) => (
-          <CommentItem key={c.id ?? i} comment={c} index={i} theme={theme} currentUser={currentUser} onDelete={onDeleteComment} deleting={deletingCommentId === c.id} />
+          <CommentItem
+            key={c.id ?? i}
+            comment={c}
+            index={i}
+            theme={theme}
+            currentUser={currentUser}
+            onDelete={onDeleteComment}
+            deleting={deletingCommentId === c.id}
+            onDownload={onDownload}
+          />
         ))
       )}
     </div>
@@ -418,7 +433,6 @@ const TicketDetailPage = () => {
       if (!res.ok) return
       const data = await res.json()
       const list = Array.isArray(data) ? data : (data.data ?? data.users ?? [])
-      // ✅ FIX: Sertakan it_support DAN manager_it sebagai agent yang bisa di-assign
       const filtered = list.filter(u =>
         ASSIGNABLE_ROLES.includes((u.role ?? u.role_name ?? '').toLowerCase())
       )
@@ -435,6 +449,32 @@ const TicketDetailPage = () => {
       setSelectedFiles(newFiles.length > 0 ? newFiles : null)
     } else {
       setSelectedFiles(files ? Array.from(files) : null)
+    }
+  }
+
+  // ✅ FIX: Handler download via authFetch (authenticated, tidak expose URL publik)
+  const handleDownload = async (attachmentId, filename, commentId = null) => {
+    try {
+      const path = commentId
+        ? `/api/tickets/${id}/comments/${commentId}/attachments/${attachmentId}/download`
+        : `/api/tickets/${id}/attachments/${attachmentId}/download`
+
+      const res = await authFetch(path)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Gagal mengunduh file.')
+      }
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch (e) {
+      alert(e.message)
     }
   }
 
@@ -552,7 +592,9 @@ const TicketDetailPage = () => {
         <Breadcrumb navigate={navigate} ticket={t} onRefresh={fetchTicket} theme={theme} />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-8 flex flex-col gap-4">
-            <TicketTitleCard ticket={t} theme={theme} />
+            {/* ✅ FIX: Pass onDownload ke TicketTitleCard */}
+            <TicketTitleCard ticket={t} theme={theme} onDownload={handleDownload} />
+            {/* ✅ FIX: Pass onDownload ke CommentsSection */}
             <CommentsSection
               comments={comments}
               comment={comment}
@@ -565,6 +607,7 @@ const TicketDetailPage = () => {
               currentUser={currentUser}
               onDeleteComment={handleDeleteComment}
               deletingCommentId={deletingCommentId}
+              onDownload={handleDownload}
             />
           </div>
           <div className="lg:col-span-4">
