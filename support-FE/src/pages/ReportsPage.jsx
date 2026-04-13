@@ -259,18 +259,6 @@ const PreviewModal = ({ preview, previewCols, theme, onClose, onExport, loadingK
 
   const cols = previewCols[preview.key] ?? []
 
-  // Close on overlay click
-  const handleOverlayClick = (e) => {
-    if (e.target === e.currentTarget) onClose()
-  }
-
-  // Close on Escape key
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
-
   // Prevent body scroll while modal open
   useEffect(() => {
     document.body.style.overflow = 'hidden'
@@ -279,7 +267,6 @@ const PreviewModal = ({ preview, previewCols, theme, onClose, onExport, loadingK
 
   return (
     <div
-      onClick={handleOverlayClick}
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(0,0,0,0.5)',
