@@ -219,23 +219,238 @@ const FILTER_CONTEXT = {
   team_performance: 'from, to',
 }
 
+// ── Report title map ──────────────────────────────────────────────────────────
+const TITLE_MAP = {
+  tickets:          'Laporan Tiket',
+  technicians:      'Kinerja Teknisi',
+  sla:              'SLA Performance',
+  assets:           'Inventaris Aset IT',
+  projects:         'Laporan Project',
+  project_tasks:    'Distribusi Task Project',
+  team_performance: 'Kinerja Tim Project',
+}
+
 // ── Access banner config ──────────────────────────────────────────────────────
 const ACCESS_BANNER = {
   full: {
     icon:  ShieldCheck,
     color: '#3B82F6',
-    label: (role, dept) => `Login sebagai ${role} — menampilkan semua data.`,
   },
   supervisor: {
     icon:  Building2,
     color: '#F59E0B',
-    label: (role, dept) => `Login sebagai supervisor — data departemen ${dept ?? 'Anda'}.`,
   },
   user: {
     icon:  User,
     color: '#8B5CF6',
-    label: (role, dept) => `Login sebagai ${role} — menampilkan data milik Anda sendiri.`,
   },
+}
+
+// ── Badge helper ──────────────────────────────────────────────────────────────
+const Badge = ({ label, color }) => (
+  <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: `${color}20`, color, border: `1px solid ${color}44` }}>
+    {label}
+  </span>
+)
+
+// ── Preview Modal ─────────────────────────────────────────────────────────────
+const PreviewModal = ({ preview, previewCols, theme, onClose, onExport, loadingKey, activeCount }) => {
+  if (!preview) return null
+
+  const cols = previewCols[preview.key] ?? []
+
+  // Close on overlay click
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) onClose()
+  }
+
+  // Close on Escape key
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  // Prevent body scroll while modal open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  return (
+    <div
+      onClick={handleOverlayClick}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 24,
+        backdropFilter: 'blur(2px)',
+      }}
+    >
+      <div
+        style={{
+          background: theme.surface,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 16,
+          width: '100%', maxWidth: 900,
+          maxHeight: '85vh',
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.25)',
+        }}
+      >
+        {/* Modal Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 20px',
+          borderBottom: `1px solid ${theme.border}`,
+          flexShrink: 0,
+        }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: theme.text }}>
+              {TITLE_MAP[preview.key] ?? 'Preview Laporan'}
+            </div>
+            <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
+              {preview.rows.length} baris ditampilkan
+              {activeCount > 0 ? ' · filter aktif' : ''}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* PDF export */}
+            <button
+              onClick={() => onExport(preview.key, 'pdf')}
+              disabled={!!loadingKey}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '7px 12px', borderRadius: 8,
+                border: '1px solid rgba(239,68,68,0.3)',
+                background: 'rgba(239,68,68,0.08)',
+                color: '#EF4444', fontSize: 12, fontWeight: 600,
+                cursor: loadingKey ? 'not-allowed' : 'pointer',
+                opacity: loadingKey && loadingKey !== `${preview.key}-pdf` ? 0.5 : 1,
+              }}
+            >
+              {loadingKey === `${preview.key}-pdf`
+                ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> PDF...</>
+                : <><FileText size={12} />PDF</>
+              }
+            </button>
+            {/* Excel export */}
+            <button
+              onClick={() => onExport(preview.key, 'excel')}
+              disabled={!!loadingKey}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '7px 12px', borderRadius: 8,
+                border: '1px solid rgba(16,185,129,0.3)',
+                background: 'rgba(16,185,129,0.08)',
+                color: '#10B981', fontSize: 12, fontWeight: 600,
+                cursor: loadingKey ? 'not-allowed' : 'pointer',
+                opacity: loadingKey && loadingKey !== `${preview.key}-excel` ? 0.5 : 1,
+              }}
+            >
+              {loadingKey === `${preview.key}-excel`
+                ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Excel...</>
+                : <><Download size={12} />Excel</>
+              }
+            </button>
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                border: `1px solid ${theme.border}`,
+                background: 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: theme.textMuted, cursor: 'pointer',
+              }}
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Body — Scrollable Table */}
+        <div style={{ overflowY: 'auto', overflowX: 'auto', flex: 1 }}>
+          {preview.rows.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 56, color: theme.textMuted, fontSize: 13 }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
+              Tidak ada data untuk filter yang dipilih.
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 600 }}>
+              <thead>
+                <tr style={{ background: theme.surfaceAlt }}>
+                  {cols.map(col => (
+                    <th
+                      key={col.key}
+                      style={{
+                        padding: '10px 14px', textAlign: 'left',
+                        fontSize: 10, fontWeight: 700, color: theme.textMuted,
+                        textTransform: 'uppercase', letterSpacing: '0.06em',
+                        whiteSpace: 'nowrap', borderBottom: `1px solid ${theme.border}`,
+                        position: 'sticky', top: 0,
+                        background: theme.surfaceAlt, zIndex: 1,
+                      }}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {preview.rows.map((row, i) => (
+                  <tr
+                    key={i}
+                    style={{
+                      borderTop: `1px solid ${theme.border}`,
+                      background: i % 2 === 1 ? theme.surfaceAlt + '80' : 'transparent',
+                    }}
+                  >
+                    {cols.map(col => {
+                      const raw = row[col.key]
+                      const val = col.render ? col.render(raw, row) : (raw ?? '—')
+                      return (
+                        <td key={col.key} style={{ padding: '8px 14px', color: theme.text, whiteSpace: 'nowrap' }}>
+                          {val}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div style={{
+          padding: '10px 20px',
+          borderTop: `1px solid ${theme.border}`,
+          fontSize: 11, color: theme.textMuted,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <span>
+            {preview.rows.length} baris
+            {activeCount > 0 ? ' · filter aktif' : ' · semua data'}
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '6px 16px', borderRadius: 8,
+              border: `1px solid ${theme.border}`,
+              background: 'transparent',
+              color: theme.textMuted, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -255,7 +470,6 @@ const ReportsPage = () => {
   const bannerVariant = fullAccess ? 'full' : supervisorRole ? 'supervisor' : 'user'
   const BannerIcon    = ACCESS_BANNER[bannerVariant].icon
   const bannerColor   = ACCESS_BANNER[bannerVariant].color
-  const bannerLabel   = ACCESS_BANNER[bannerVariant].label(userRole, userDept)
 
   const [loadingKey,     setLoadingKey]     = useState(null)
   const [stats,          setStats]          = useState(null)
@@ -276,7 +490,6 @@ const ReportsPage = () => {
     if (filters.to)       p.set('to',       filters.to)
     if (filters.status)   p.set('status',   filters.status)
     if (filters.priority) p.set('priority', filters.priority)
-    // user_id filter hanya dikirim jika user adalah admin/manager
     if (filters.user_id && fullAccess) p.set('user_id', filters.user_id)
     Object.entries(extra).forEach(([k, v]) => v && p.set(k, v))
     return p.toString() ? '?' + p.toString() : ''
@@ -307,7 +520,7 @@ const ReportsPage = () => {
 
   // ── Load users list (hanya untuk admin/manager) ───────────────────────────
   const loadUsers = useCallback(async () => {
-    if (!fullAccess) return // non-admin tidak perlu list user
+    if (!fullAccess) return
     try {
       const res = await apiFetch('/api/users?per_page=200')
       const j   = await res.json()
@@ -358,8 +571,8 @@ const ReportsPage = () => {
     }
   }
 
+  // Opens modal — clicking Preview always fetches fresh data and opens modal
   const handlePreview = async (key) => {
-    if (preview?.key === key) { setPreview(null); return }
     await handlePreviewFetch(key)
   }
 
@@ -401,10 +614,9 @@ const ReportsPage = () => {
 
   const resetFilters = () => {
     setFilters({ from: '', to: '', user_id: '', status: '', priority: '' })
-    if (preview) setPreview(null)
+    setPreview(null)
   }
 
-  // Hanya hitung filter yang relevan untuk badge count
   const activeCount = [
     filters.from,
     filters.to,
@@ -659,16 +871,14 @@ const ReportsPage = () => {
       {/* ── Report Cards ───────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
         {currentReports.map(({ key, title, desc, icon: Icon, color }) => {
-          const isOpen     = preview?.key === key
           const isPrevLoad = previewLoading === key
 
           return (
             <div key={key} style={{
               background: theme.surface,
-              border: `1px solid ${isOpen ? color + '55' : theme.border}`,
+              border: `1px solid ${theme.border}`,
               borderRadius: 14, padding: '16px 18px',
               display: 'flex', flexDirection: 'column', gap: 14,
-              transition: 'border-color 0.2s',
             }}>
 
               {/* Card Header */}
@@ -692,30 +902,61 @@ const ReportsPage = () => {
 
               {/* Action Buttons */}
               <div style={{ display: 'flex', gap: 8 }}>
+                {/* Preview — always opens modal */}
                 <button
                   onClick={() => handlePreview(key)}
-                  disabled={!!loadingKey || isPrevLoad}
-                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px', borderRadius: 8, border: `1px solid ${isOpen ? color : theme.border}`, background: isOpen ? `${color}18` : 'transparent', color: isOpen ? color : theme.textMuted, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
+                  disabled={!!loadingKey || !!previewLoading}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '8px', borderRadius: 8,
+                    border: `1px solid ${theme.border}`,
+                    background: 'transparent',
+                    color: theme.textMuted,
+                    fontSize: 12, fontWeight: 600,
+                    cursor: (loadingKey || previewLoading) ? 'not-allowed' : 'pointer',
+                    opacity: (previewLoading && previewLoading !== key) ? 0.5 : 1,
+                    transition: 'all 0.15s',
+                  }}
                 >
                   {isPrevLoad
                     ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Memuat...</>
-                    : <><FileText size={12} />{isOpen ? 'Tutup' : 'Preview'}</>
+                    : <><FileText size={12} />Preview</>
                   }
                 </button>
+
+                {/* PDF */}
                 <button
                   onClick={() => handleExport(key, 'pdf')}
                   disabled={!!loadingKey}
-                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#EF4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '8px', borderRadius: 8,
+                    border: '1px solid rgba(239,68,68,0.3)',
+                    background: 'rgba(239,68,68,0.08)',
+                    color: '#EF4444', fontSize: 12, fontWeight: 600,
+                    cursor: loadingKey ? 'not-allowed' : 'pointer',
+                    opacity: loadingKey && loadingKey !== `${key}-pdf` ? 0.5 : 1,
+                  }}
                 >
                   {loadingKey === `${key}-pdf`
                     ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> PDF...</>
                     : <><FileText size={12} />PDF</>
                   }
                 </button>
+
+                {/* Excel */}
                 <button
                   onClick={() => handleExport(key, 'excel')}
                   disabled={!!loadingKey}
-                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px', borderRadius: 8, border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.08)', color: '#10B981', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '8px', borderRadius: 8,
+                    border: '1px solid rgba(16,185,129,0.3)',
+                    background: 'rgba(16,185,129,0.08)',
+                    color: '#10B981', fontSize: 12, fontWeight: 600,
+                    cursor: loadingKey ? 'not-allowed' : 'pointer',
+                    opacity: loadingKey && loadingKey !== `${key}-excel` ? 0.5 : 1,
+                  }}
                 >
                   {loadingKey === `${key}-excel`
                     ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> Excel...</>
@@ -723,49 +964,6 @@ const ReportsPage = () => {
                   }
                 </button>
               </div>
-
-              {/* Preview Table */}
-              {isOpen && (
-                <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${theme.border}`, maxHeight: 320, overflowY: 'auto' }}>
-                  {preview.rows.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 32, color: theme.textMuted, fontSize: 12 }}>
-                      <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
-                      Tidak ada data untuk filter yang dipilih.
-                    </div>
-                  ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 500 }}>
-                      <thead>
-                        <tr style={{ background: theme.surfaceAlt }}>
-                          {previewCols[key]?.map(col => (
-                            <th key={col.key} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap', borderBottom: `1px solid ${theme.border}`, position: 'sticky', top: 0, background: theme.surfaceAlt, zIndex: 1 }}>
-                              {col.label}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {preview.rows.map((row, i) => (
-                          <tr key={i} style={{ borderTop: `1px solid ${theme.border}`, background: i % 2 === 1 ? theme.surfaceAlt + '80' : 'transparent' }}>
-                            {previewCols[key]?.map(col => {
-                              const raw = row[col.key]
-                              const val = col.render ? col.render(raw, row) : (raw ?? '—')
-                              return (
-                                <td key={col.key} style={{ padding: '7px 12px', color: theme.text, whiteSpace: 'nowrap' }}>
-                                  {val}
-                                </td>
-                              )
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                  <div style={{ padding: '6px 12px', borderTop: `1px solid ${theme.border}`, fontSize: 10, color: theme.textMuted, textAlign: 'right' }}>
-                    {preview.rows.length} baris ditampilkan
-                    {activeCount > 0 ? ' (dengan filter aktif)' : ''}
-                  </div>
-                </div>
-              )}
             </div>
           )
         })}
@@ -798,16 +996,20 @@ const ReportsPage = () => {
         </div>
       </div>
 
+      {/* ── Preview Modal ──────────────────────────────────────────────── */}
+      <PreviewModal
+        preview={preview}
+        previewCols={previewCols}
+        theme={theme}
+        onClose={() => setPreview(null)}
+        onExport={handleExport}
+        loadingKey={loadingKey}
+        activeCount={activeCount}
+      />
+
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 }
-
-// ── Badge helper ──────────────────────────────────────────────────────────────
-const Badge = ({ label, color }) => (
-  <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: `${color}20`, color, border: `1px solid ${color}44` }}>
-    {label}
-  </span>
-)
 
 export default ReportsPage
