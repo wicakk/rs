@@ -25,7 +25,14 @@ class UserController extends Controller
             );
         }
 
-        return response()->json($query->paginate($request->per_page ?? 20));
+        // ✅ FIX: Jika request ?all=true, return semua data tanpa pagination
+        // Digunakan oleh UsersPage (untuk load semua user ke frontend)
+        // dan TicketDetailPage (untuk dropdown assign agent)
+        if ($request->boolean('all')) {
+            return response()->json(['data' => $query->get()]);
+        }
+
+        return response()->json($query->paginate($request->per_page ?? 10));
     }
 
     public function store(Request $request): JsonResponse
@@ -47,12 +54,12 @@ class UserController extends Controller
                 : substr($data['name'], 0, 2)
         );
 
-        $colors   = ['#3B8BFF','#8B5CF6','#06B6D4','#10B981','#F59E0B','#F97316'];
+        $colors = ['#3B8BFF','#8B5CF6','#06B6D4','#10B981','#F59E0B','#F97316'];
         $user = User::create([
             ...$data,
-            'password' => Hash::make($data['password']),
-            'initials' => $initials,
-            'color'    => $colors[array_rand($colors)],
+            'password'  => Hash::make($data['password']),
+            'initials'  => $initials,
+            'color'     => $colors[array_rand($colors)],
             'is_active' => true,
         ]);
 
@@ -64,21 +71,21 @@ class UserController extends Controller
         return response()->json($user->loadCount(['requestedTickets','assignedTickets']));
     }
 
-    public function update(Request $request, User $user)
+    public function update(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email,' . $user->id,
+            'name'       => 'required|string|max:255',
+            'email'      => 'required|email|unique:users,email,' . $user->id,
             'department' => 'nullable|string|max:255',
-            'role' => 'required|string',
-            'is_active' => 'required|boolean',
+            'role'       => 'required|string',
+            'is_active'  => 'required|boolean',
         ]);
 
         $user->update($validated);
 
         return response()->json([
             'message' => 'User updated successfully',
-            'data' => $user
+            'data'    => $user,
         ]);
     }
 
