@@ -27,7 +27,6 @@ const makeLbl = (theme) => ({
   color: theme.textMuted, marginBottom: 5,
 })
 
-// ✅ FIX: Hapus onClick={onClose} dari overlay — klik di luar modal tidak menutup
 const ModalShell = ({ onClose, children, maxWidth = 440, theme }) => (
   <div style={{ position: 'fixed', inset: 0, background: theme.overlay, backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 12 }}>
     <div onClick={e => e.stopPropagation()} style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, width: '100%', maxWidth, boxShadow: '0 25px 60px rgba(0,0,0,0.35)', overflow: 'hidden', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
@@ -112,7 +111,6 @@ function AddModal({ onClose, onSave, loading, theme }) {
   )
 }
 
-// ─── Edit Modal + Reset Password ─────────────────────────────
 function EditModal({ user, onClose, onSave, onResetPassword, loading, theme }) {
   const [form, setForm]           = useState({ name: user.name ?? '', email: user.email ?? '', department: user.department ?? '', role: user.role ?? 'user', is_active: user.is_active ?? true })
   const [resetting, setResetting] = useState(false)
@@ -228,6 +226,61 @@ function RoleFilter({ active, onChange, counts, theme }) {
   )
 }
 
+// ✅ Komponen Pagination
+function Pagination({ page, totalPages, onChange, theme }) {
+  if (totalPages <= 1) return null
+  const btnBase = { padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, border: `1px solid ${theme.border}`, cursor: 'pointer', transition: 'all 0.15s' }
+
+  // Buat array halaman yang ditampilkan (maks 7, dengan ellipsis)
+  const pages = []
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i)
+  } else {
+    if (page <= 4) {
+      pages.push(1, 2, 3, 4, 5, '...', totalPages)
+    } else if (page >= totalPages - 3) {
+      pages.push(1, '...', totalPages-4, totalPages-3, totalPages-2, totalPages-1, totalPages)
+    } else {
+      pages.push(1, '...', page-1, page, page+1, '...', totalPages)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
+      <button
+        onClick={() => onChange(Math.max(page - 1, 1))}
+        disabled={page === 1}
+        style={{ ...btnBase, background: theme.surface, color: page === 1 ? theme.textDim : theme.textMuted, cursor: page === 1 ? 'not-allowed' : 'pointer' }}
+      >
+        Previous
+      </button>
+      {pages.map((p, i) =>
+        p === '...'
+          ? <span key={`ellipsis-${i}`} style={{ padding: '6px 4px', fontSize: 12, color: theme.textMuted }}>…</span>
+          : (
+            <button
+              key={p}
+              onClick={() => onChange(p)}
+              style={{ ...btnBase, background: page === p ? theme.accent : theme.surface, color: page === p ? '#fff' : theme.textMuted, borderColor: page === p ? theme.accent : theme.border, minWidth: 34 }}
+            >
+              {p}
+            </button>
+          )
+      )}
+      <button
+        onClick={() => onChange(Math.min(page + 1, totalPages))}
+        disabled={page === totalPages}
+        style={{ ...btnBase, background: theme.surface, color: page === totalPages ? theme.textDim : theme.textMuted, cursor: page === totalPages ? 'not-allowed' : 'pointer' }}
+      >
+        Next
+      </button>
+    </div>
+  )
+}
+
+// ✅ Konstanta per halaman
+const PER_PAGE = 10
+
 function UsersPage() {
   const { T: theme } = useTheme()
   const { isSuperAdmin, can } = usePermission()
@@ -243,12 +296,11 @@ function UsersPage() {
   const [toast, setToast]               = useState(null)
   const [page, setPage]                 = useState(1)
   const [roleFilter, setRoleFilter]     = useState(null)
-  const perPage = 10
 
   const { query, setQuery, results } = useSearch(users, ['name', 'email', 'department', 'role'])
   const filtered   = roleFilter ? results.filter(u => u.role === roleFilter) : results
-  const totalPages = Math.ceil(filtered.length / perPage)
-  const paginated  = filtered.slice((page - 1) * perPage, page * perPage)
+  const totalPages = Math.ceil(filtered.length / PER_PAGE)
+  const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
   const roleCounts = users.reduce((acc, u) => { acc[u.role] = (acc[u.role] ?? 0) + 1; return acc }, {})
 
   const showToast = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000) }
@@ -260,11 +312,23 @@ function UsersPage() {
         const token = localStorage.getItem('token')
         if (!token) throw new Error('Belum login')
         const h = { Accept: 'application/json', Authorization: `Bearer ${token}` }
-        const [ru, rt] = await Promise.all([fetch('/api/users', { headers: h }), fetch('/api/tickets', { headers: h })])
+
+        // ✅ FIX: Gunakan ?all=true agar semua user ter-load, bukan hanya 20 pertama
+        // Pagination 10 per halaman tetap dihandle di sisi frontend
+        const [ru, rt] = await Promise.all([
+          fetch('/api/users?all=true', { headers: h }),
+          fetch('/api/tickets', { headers: h }),
+        ])
         if (!ru.ok) throw new Error('Gagal fetch users')
         const rawUsers = (await ru.json()).data ?? []
         let tc = {}
-        if (rt.ok) { const tks = ((await rt.json()).data ?? []); tks.forEach(t => { const id = t.assigned_to ?? t.assignee_id ?? t.technician_id ?? t.user_id; if (id != null) tc[id] = (tc[id] ?? 0) + 1 }) }
+        if (rt.ok) {
+          const tks = ((await rt.json()).data ?? [])
+          tks.forEach(t => {
+            const id = t.assigned_to ?? t.assignee_id ?? t.technician_id ?? t.user_id
+            if (id != null) tc[id] = (tc[id] ?? 0) + 1
+          })
+        }
         setUsers(rawUsers.map(u => ({ ...u, tickets: tc[u.id] ?? 0 })))
       } catch (err) { setError(err.message) }
       finally { setLoading(false) }
@@ -329,41 +393,69 @@ function UsersPage() {
       const token = localStorage.getItem('token')
       const res = await fetch(`/api/users/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } })
       if (!res.ok) throw new Error('Gagal menghapus')
-      setUsers(p => p.filter(u => u.id !== id)); setDeleteUser(null); showToast('User berhasil dihapus')
+      setUsers(p => p.filter(u => u.id !== id))
+      setDeleteUser(null)
+      showToast('User berhasil dihapus')
     } catch (err) { showToast(err.message, 'error') }
     finally { setActionLoading(false) }
   }
 
-  const btnPage = { padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, border: `1px solid ${theme.border}`, cursor: 'pointer', transition: 'all 0.15s' }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <PageHeader title="User Management" subtitle={loading ? 'Memuat...' : error ? 'Gagal memuat data' : `${users.length} pengguna terdaftar`} action={can('users.create') && <PrimaryButton icon={Plus} onClick={() => setAddOpen(true)}>Tambah User</PrimaryButton>} />
+      <PageHeader
+        title="User Management"
+        subtitle={loading ? 'Memuat...' : error ? 'Gagal memuat data' : `${users.length} pengguna terdaftar`}
+        action={can('users.create') && <PrimaryButton icon={Plus} onClick={() => setAddOpen(true)}>Tambah User</PrimaryButton>}
+      />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <SearchBar value={query} onChange={v => { setQuery(v); setPage(1) }} placeholder="Cari nama, email, department..." disabled={loading} />
         <RoleFilter active={roleFilter} onChange={r => { setRoleFilter(r); setPage(1) }} counts={roleCounts} theme={theme} />
       </div>
       {error && <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: theme.danger, fontSize: 12 }}>{error}</div>}
+
       <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, overflow: 'hidden', position: 'relative' }}>
         {loading && <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${theme.surface}CC`, zIndex: 10, fontSize: 13, color: theme.textMuted }}>Memuat data...</div>}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
-            <thead><tr style={{ background: theme.surfaceAlt }}>{['User','Role','Department','Tiket','Status','Aksi'].map(h => (<th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: `1px solid ${theme.border}`, whiteSpace: 'nowrap' }}>{h}</th>))}</tr></thead>
+            <thead>
+              <tr style={{ background: theme.surfaceAlt }}>
+                {['User','Role','Department','Tiket','Status','Aksi'].map(h => (
+                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: `1px solid ${theme.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
               {paginated.map(u => {
                 const roleCfg = ROLES[u.role]
                 return (
                   <tr key={u.id} style={{ borderTop: `1px solid ${theme.border}`, transition: 'background 0.15s' }} onMouseEnter={e => e.currentTarget.style.background = theme.surfaceHover} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <td style={{ padding: '12px 16px' }}><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Avatar initials={(u.name || '').slice(0,2).toUpperCase()} size={32} /><div><div style={{ color: theme.text, fontSize: 13, fontWeight: 500 }}>{u.name}</div><div style={{ color: theme.textMuted, fontSize: 11 }}>{u.email}</div></div></div></td>
-                    <td style={{ padding: '12px 16px' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: roleCfg?.bg ?? 'rgba(148,163,184,0.1)', color: roleCfg?.color ?? theme.textMuted, border: `1px solid ${roleCfg?.border ?? theme.border}` }}><div style={{ width: 5, height: 5, borderRadius: '50%', background: roleCfg?.color ?? theme.textMuted }} />{roleCfg?.label ?? u.role}</span></td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar initials={(u.name || '').slice(0,2).toUpperCase()} size={32} />
+                        <div>
+                          <div style={{ color: theme.text, fontSize: 13, fontWeight: 500 }}>{u.name}</div>
+                          <div style={{ color: theme.textMuted, fontSize: 11 }}>{u.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 500, background: roleCfg?.bg ?? 'rgba(148,163,184,0.1)', color: roleCfg?.color ?? theme.textMuted, border: `1px solid ${roleCfg?.border ?? theme.border}` }}>
+                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: roleCfg?.color ?? theme.textMuted }} />
+                        {roleCfg?.label ?? u.role}
+                      </span>
+                    </td>
                     <td style={{ padding: '12px 16px', color: theme.textMuted, fontSize: 12 }}>{u.department ?? '—'}</td>
                     <td style={{ padding: '12px 16px', color: theme.text, fontFamily: 'monospace', fontSize: 13 }}>{u.tickets ?? 0}</td>
-                    <td style={{ padding: '12px 16px' }}><Badge label={u.is_active ? 'Active' : 'Inactive'} cfg={{ bg: u.is_active ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)', text: u.is_active ? theme.success : theme.danger, border: u.is_active ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)' }} dot /></td>
-                    <td style={{ padding: '12px 16px' }}><div style={{ display: 'flex', gap: 6 }}>
-                      {isSuperAdmin && <button onClick={() => setAssignUser(u)} title="Assign Role" style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: '#7C3AED', cursor: 'pointer' }}><Shield size={11} /></button>}
-                      {can('users.edit') && <button onClick={() => setEditUser(u)} title="Edit user" style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.accent, cursor: 'pointer' }}><Edit2 size={11} /></button>}
-                      {can('users.delete') && <button onClick={() => setDeleteUser(u)} title="Hapus user" style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.danger, cursor: 'pointer' }}><Trash2 size={11} /></button>}
-                    </div></td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <Badge label={u.is_active ? 'Active' : 'Inactive'} cfg={{ bg: u.is_active ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)', text: u.is_active ? theme.success : theme.danger, border: u.is_active ? 'rgba(16,185,129,0.22)' : 'rgba(239,68,68,0.22)' }} dot />
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {isSuperAdmin && <button onClick={() => setAssignUser(u)} title="Assign Role" style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: '#7C3AED', cursor: 'pointer' }}><Shield size={11} /></button>}
+                        {can('users.edit') && <button onClick={() => setEditUser(u)} title="Edit user" style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.accent, cursor: 'pointer' }}><Edit2 size={11} /></button>}
+                        {can('users.delete') && <button onClick={() => setDeleteUser(u)} title="Hapus user" style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.danger, cursor: 'pointer' }}><Trash2 size={11} /></button>}
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
@@ -372,13 +464,15 @@ function UsersPage() {
         </div>
         {!loading && paginated.length === 0 && <EmptyState icon={Users} message="Tidak ada user ditemukan" />}
       </div>
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
-          <button onClick={() => setPage(p => Math.max(p-1,1))} disabled={page===1} style={{ ...btnPage, background: theme.surface, color: page===1 ? theme.textDim : theme.textMuted, cursor: page===1 ? 'not-allowed' : 'pointer' }}>Previous</button>
-          {Array.from({ length: totalPages }, (_,i) => i+1).map(pNum => (<button key={pNum} onClick={() => setPage(pNum)} style={{ ...btnPage, background: page===pNum ? theme.accent : theme.surface, color: page===pNum ? '#fff' : theme.textMuted, borderColor: page===pNum ? theme.accent : theme.border }}>{pNum}</button>))}
-          <button onClick={() => setPage(p => Math.min(p+1,totalPages))} disabled={page===totalPages} style={{ ...btnPage, background: theme.surface, color: page===totalPages ? theme.textDim : theme.textMuted, cursor: page===totalPages ? 'not-allowed' : 'pointer' }}>Next</button>
-        </div>
-      )}
+
+      {/* ✅ Pagination 10 per halaman */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: theme.textMuted }}>
+          {filtered.length > 0 && `Menampilkan ${(page - 1) * PER_PAGE + 1}–${Math.min(page * PER_PAGE, filtered.length)} dari ${filtered.length} user`}
+        </span>
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} theme={theme} />
+      </div>
+
       {addOpen    && <AddModal    onClose={() => !actionLoading && setAddOpen(false)} onSave={handleCreate} loading={actionLoading} theme={theme} />}
       {editUser   && <EditModal   user={editUser}   onClose={() => !actionLoading && setEditUser(null)}   onSave={handleSave} onResetPassword={handleResetPassword} loading={actionLoading} theme={theme} />}
       {deleteUser && <DeleteModal user={deleteUser} onClose={() => !actionLoading && setDeleteUser(null)} onConfirm={handleDelete} loading={actionLoading} theme={theme} />}

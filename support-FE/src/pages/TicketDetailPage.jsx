@@ -10,7 +10,6 @@ const fmt = (iso) => !iso ? '—' : new Date(iso).toLocaleString('id-ID', { day:
 const fmtDate = (val) => !val ? '—' : new Date(val).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 const fmtRp = (val) => !val ? '—' : new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val)
 
-// Role yang boleh di-assign tiket
 const ASSIGNABLE_ROLES = ['it_support', 'manager_it']
 
 // ─── COMPONENTS ─────────────────────────────────────────────────
@@ -123,7 +122,6 @@ const AssignDropdown = ({ agents, current, onAssign, assigning, theme }) => {
   )
 }
 
-// ✅ TicketTitleCard — attachment menggunakan authenticated download (button, bukan <a>)
 const TicketTitleCard = ({ ticket, theme, onDownload }) => (
   <div className="rounded-xl p-5 flex flex-col gap-3" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
     <div className="flex items-start justify-between gap-3">
@@ -139,7 +137,6 @@ const TicketTitleCard = ({ ticket, theme, onDownload }) => (
     {ticket.description && (
       <p className="text-sm leading-relaxed border-t pt-3 mt-1 whitespace-pre-wrap break-words" style={{ color: theme.text, borderColor: theme.border }}>{ticket.description}</p>
     )}
-    {/* ✅ FIX: Ganti <a href> menjadi button dengan authenticated download */}
     {ticket.attachments?.filter(a => !a.comment_id).length > 0 && (
       <div className="flex flex-wrap gap-2 pt-2 border-t" style={{ borderColor: theme.border }}>
         {ticket.attachments.filter(a => !a.comment_id).map((a, i) => (
@@ -202,7 +199,6 @@ const TicketTitleCard = ({ ticket, theme, onDownload }) => (
   </div>
 )
 
-// ✅ FIX: CommentItem menerima prop onDownload, attachment pakai button bukan <a>
 const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting, onDownload }) => {
   const displayName = comment.user?.name ?? comment.user_name ?? comment.author ?? (comment.user_id ? `User #${comment.user_id}` : 'Unknown')
   const initials = displayName.charAt(0).toUpperCase()
@@ -234,7 +230,6 @@ const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting, o
         ) : (
           <p className="text-sm italic" style={{ color: theme.textMuted }}>— (komentar kosong)</p>
         )}
-        {/* ✅ FIX: Ganti <a href> menjadi button dengan authenticated download */}
         {comment.attachments?.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t" style={{ borderColor: theme.border }}>
             {comment.attachments.map((a, idx) => (
@@ -257,7 +252,6 @@ const CommentItem = ({ comment, index, theme, currentUser, onDelete, deleting, o
   )
 }
 
-// ✅ FIX: CommentsSection menerima dan meneruskan prop onDownload ke CommentItem
 const CommentsSection = ({ comments, comment, onCommentChange, onCommentSubmit, submitting, theme, onFileSelect, selectedFiles, currentUser, onDeleteComment, deletingCommentId, onDownload }) => (
   <div className="rounded-xl overflow-hidden flex flex-col" style={{ background: theme.surface, border: `1px solid ${theme.border}` }}>
     <div className="flex items-center gap-2 px-5 py-3 border-b" style={{ borderColor: theme.border }}>
@@ -315,7 +309,6 @@ const CommentsSection = ({ comments, comment, onCommentChange, onCommentSubmit, 
   </div>
 )
 
-// ✅ Toast notification
 const Toast = ({ toast, theme }) => {
   if (!toast) return null
   const isSuccess = toast.type === 'success'
@@ -462,7 +455,8 @@ const TicketDetailPage = () => {
 
   const fetchAgents = async () => {
     try {
-      const res = await authFetch('/api/users')
+      // ✅ FIX: Gunakan ?all=true agar semua agent ter-load tanpa batas pagination
+      const res = await authFetch('/api/users?all=true')
       if (!res.ok) return
       const data = await res.json()
       const list = Array.isArray(data) ? data : (data.data ?? data.users ?? [])
@@ -485,7 +479,6 @@ const TicketDetailPage = () => {
     }
   }
 
-  // ✅ FIX: Handler download via authFetch (authenticated, tidak expose URL publik)
   const handleDownload = async (attachmentId, filename, commentId = null) => {
     try {
       const path = commentId
@@ -633,9 +626,7 @@ const TicketDetailPage = () => {
         <Breadcrumb navigate={navigate} ticket={t} onRefresh={fetchTicket} theme={theme} />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           <div className="lg:col-span-8 flex flex-col gap-4">
-            {/* ✅ FIX: Pass onDownload ke TicketTitleCard */}
             <TicketTitleCard ticket={t} theme={theme} onDownload={handleDownload} />
-            {/* ✅ FIX: Pass onDownload ke CommentsSection */}
             <CommentsSection
               comments={comments}
               comment={comment}
