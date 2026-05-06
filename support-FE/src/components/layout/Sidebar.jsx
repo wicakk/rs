@@ -1,4 +1,5 @@
 // src/components/layout/Sidebar.jsx
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Ticket, Package, BookOpen,
   Activity, BarChart3, Users, Settings,
@@ -13,33 +14,88 @@ import { useNavigate, useLocation } from 'react-router-dom'
 const ICONS = { LayoutDashboard, Ticket, Package, BookOpen, Activity, BarChart3, Users, Settings, Shield, Kanban, BookMarked, MapPin, Tag }
 
 const NAV_ITEMS = [
-  { id: 'dashboard',              label: 'Dashboard',              iconName: 'LayoutDashboard' },
-  { id: 'tickets',                label: 'Tiket',                  iconName: 'Ticket'          },
-  { id: 'projects',               label: 'Projects',               iconName: 'Kanban'          },
-  { id: 'assets',                 label: 'Asset Management',       iconName: 'Package'         },
-  { id: 'knowledge',              label: 'Knowledge Base',         iconName: 'BookOpen'        },
-  { id: 'monitoring',             label: 'Monitoring',             iconName: 'Activity'        },
-  { id: 'reports',                label: 'Reports',                iconName: 'BarChart3'       },
-  { id: 'users',                  label: 'User Management',        iconName: 'Users'           },
-  { id: 'roles',                  label: 'Role Management',        iconName: 'Shield'          },
-  { id: 'master',                 label: 'Master Category',        iconName: 'BookMarked'      },
-  // { id: 'master/locations',       label: 'Master Lokasi',          iconName: 'MapPin'          },
-  // ── [TAMBAHAN] Master Kategori Aset ──
-  { id: 'master/asset-categories', label: 'Master Kategori Aset', iconName: 'Tag'             },
-  { id: 'settings',               label: 'Settings',              iconName: 'Settings'        },
+  { id: 'dashboard',               label: 'Dashboard',              iconName: 'LayoutDashboard' },
+  { id: 'tickets',                 label: 'Tiket',                  iconName: 'Ticket'          },
+  { id: 'projects',                label: 'Projects',               iconName: 'Kanban'          },
+  { id: 'assets',                  label: 'Asset Management',       iconName: 'Package'         },
+  { id: 'knowledge',               label: 'Knowledge Base',         iconName: 'BookOpen'        },
+  { id: 'monitoring',              label: 'Monitoring',             iconName: 'Activity'        },
+  { id: 'reports',                 label: 'Reports',                iconName: 'BarChart3'       },
+  { id: 'users',                   label: 'User Management',        iconName: 'Users'           },
+  { id: 'roles',                   label: 'Role Management',        iconName: 'Shield'          },
+  { id: 'master',                  label: 'Master Category',        iconName: 'BookMarked'      },
+  { id: 'master/asset-categories', label: 'Master Kategori Aset',  iconName: 'Tag'             },
+  { id: 'settings',                label: 'Settings',               iconName: 'Settings'        },
 ]
 
-const NavItem = ({ item, active, collapsed, onClick }) => {
+const NavItem = ({ item, active, collapsed, onClick, badge }) => {
   const { T, isDark } = useTheme()
   const Icon = ICONS[item.iconName] ?? LayoutDashboard
   return (
-    <button onClick={() => onClick(item.id)} title={collapsed ? item.label : ''}
-      style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: active ? 600 : 400, cursor: 'pointer', border: 'none', justifyContent: collapsed ? 'center' : 'flex-start', background: active ? (isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)') : 'transparent', color: active ? T.accent : T.textMuted, transition: 'background 0.2s, color 0.2s' }}
-      onMouseEnter={e => { if (!active) { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = T.textSub } }}
-      onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.textMuted } }}
+    <button
+      onClick={() => onClick(item.id)}
+      title={collapsed ? item.label : ''}
+      style={{
+        position: 'relative',
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 12px',
+        borderRadius: 8,
+        fontSize: 12,
+        fontWeight: active ? 600 : 400,
+        cursor: 'pointer',
+        border: 'none',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        background: active ? (isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)') : 'transparent',
+        color: active ? T.accent : T.textMuted,
+        transition: 'background 0.2s, color 0.2s',
+      }}
+      onMouseEnter={e => {
+        if (!active) {
+          e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
+          e.currentTarget.style.color = T.textSub
+        }
+      }}
+      onMouseLeave={e => {
+        if (!active) {
+          e.currentTarget.style.background = 'transparent'
+          e.currentTarget.style.color = T.textMuted
+        }
+      }}
     >
-      {active && !collapsed && <div style={{ position: 'absolute', left: 0, top: '22%', bottom: '22%', width: 3, background: T.accent, borderRadius: '0 3px 3px 0' }} />}
-      <Icon size={16} />
+      {active && !collapsed && (
+        <div style={{ position: 'absolute', left: 0, top: '22%', bottom: '22%', width: 3, background: T.accent, borderRadius: '0 3px 3px 0' }} />
+      )}
+
+      {/* Icon with badge */}
+      <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
+        <Icon size={16} />
+        {badge > 0 && (
+          <span style={{
+            position: 'absolute',
+            top: -5,
+            right: -7,
+            fontSize: 9,
+            fontWeight: 700,
+            background: T.danger,
+            color: '#fff',
+            borderRadius: 999,
+            padding: '0 3px',
+            minWidth: 14,
+            height: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            lineHeight: 1,
+            pointerEvents: 'none',
+          }}>
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+      </div>
+
       {!collapsed && <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>}
     </button>
   )
@@ -53,7 +109,19 @@ const Sidebar = () => {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // active check — setiap path /master/* harus exact match agar tidak saling aktif
+  const [ticketBadge, setTicketBadge] = useState(0)
+
+  // Terima update badge dari Topbar — satu arah: Topbar → Sidebar
+  useEffect(() => {
+    const handleBadgeUpdate = (e) => setTicketBadge(e.detail ?? 0)
+    window.addEventListener('ticket-badge-update', handleBadgeUpdate)
+    return () => window.removeEventListener('ticket-badge-update', handleBadgeUpdate)
+  }, [])
+
+  // ─── DIHAPUS: jangan auto-reset badge saat masuk halaman /tickets ────
+  // Badge hanya hilang kalau user klik notif satu per satu
+  // atau klik "Tandai semua dibaca" di dropdown Topbar.
+
   const isActive = (itemId) => {
     const path = location.pathname
     if (itemId === 'master/asset-categories') return path === '/master/asset-categories'
@@ -63,7 +131,16 @@ const Sidebar = () => {
   }
 
   return (
-    <aside style={{ width: sidebarCollapsed ? 64 : 224, background: T.surface, borderRight: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', transition: 'width 0.3s ease', flexShrink: 0, overflow: 'hidden' }}>
+    <aside style={{
+      width: sidebarCollapsed ? 64 : 224,
+      background: T.surface,
+      borderRight: `1px solid ${T.border}`,
+      display: 'flex',
+      flexDirection: 'column',
+      transition: 'width 0.3s ease',
+      flexShrink: 0,
+      overflow: 'hidden',
+    }}>
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', minHeight: 60, borderBottom: `1px solid ${T.border}` }}>
         <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: 'linear-gradient(135deg, #6366f1, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(99,102,241,0.4)' }}>
@@ -88,13 +165,15 @@ const Sidebar = () => {
               active={isActive(item.id)}
               collapsed={sidebarCollapsed}
               onClick={id => navigate(`/${id}`)}
+              badge={item.id === 'tickets' ? ticketBadge : 0}
             />
           ))}
       </nav>
 
       {/* Footer */}
       <div style={{ padding: 8, borderTop: `1px solid ${T.border}` }}>
-        <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', fontSize: 11, color: T.textMuted, background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', border: `1px solid ${T.border}`, borderRadius: 8, cursor: 'pointer', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
           onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'; e.currentTarget.style.color = T.text }}
           onMouseLeave={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'; e.currentTarget.style.color = T.textMuted }}
@@ -111,7 +190,8 @@ const Sidebar = () => {
             </div>
           </div>
         )}
-        <button onClick={logout}
+        <button
+          onClick={logout}
           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', fontSize: 11, color: T.textMuted, background: 'none', border: 'none', borderRadius: 8, cursor: 'pointer', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}
           onMouseEnter={e => e.currentTarget.style.color = T.danger}
           onMouseLeave={e => e.currentTarget.style.color = T.textMuted}

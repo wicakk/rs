@@ -455,7 +455,6 @@ const TicketDetailPage = () => {
 
   const fetchAgents = async () => {
     try {
-      // ✅ FIX: Gunakan ?all=true agar semua agent ter-load tanpa batas pagination
       const res = await authFetch('/api/users?all=true')
       if (!res.ok) return
       const data = await res.json()
@@ -562,16 +561,31 @@ const TicketDetailPage = () => {
     } catch (e) { alert(e.message) } finally { setResolving(false) }
   }
 
+ // Ganti handleAssign di TicketDetailPage dengan ini.
+  // Perubahan: HAPUS window.dispatchEvent ticket-assigned — tidak berguna untuk cross-user
   const handleAssign = async (agentId) => {
     setAssigning(true)
     try {
       if (agentId === null) {
-        const res = await authFetch(`/api/tickets/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assigned_to: null }) })
+        const res = await authFetch(`/api/tickets/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assigned_to: null }),
+        })
         if (!res.ok) throw new Error('Gagal menghapus assignment.')
       } else {
-        const res = await authFetch(`/api/tickets/${id}/assign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assigned_to: agentId }) })
+        const res = await authFetch(`/api/tickets/${id}/assign`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assigned_to: agentId }),
+        })
         if (!res.ok) throw new Error('Gagal mengassign tiket.')
+
+        // TIDAK ada window.dispatchEvent di sini.
+        // Notif akan muncul di browser Rizky lewat polling Topbar-nya sendiri
+        // saat tiket ini muncul di endpoint /api/tickets?assigned_to=rizky_id
       }
+
       const restrictedRoles = ['admin', 'super_admin', 'manager_it', 'manager']
       if (!restrictedRoles.includes(currentUser?.role)) {
         showToast(agentId === null ? 'Assignment berhasil dihapus.' : 'Tiket berhasil di-assign!')
@@ -580,7 +594,11 @@ const TicketDetailPage = () => {
         showToast(agentId === null ? 'Assignment berhasil dihapus.' : 'Tiket berhasil di-assign!')
         await fetchTicket()
       }
-    } catch (e) { showToast(e.message, 'error') } finally { setAssigning(false) }
+    } catch (e) {
+      showToast(e.message, 'error')
+    } finally {
+      setAssigning(false)
+    }
   }
 
   const handleDeleteComment = async (commentId) => {
