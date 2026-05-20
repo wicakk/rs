@@ -917,7 +917,7 @@ const TicketsPage = () => {
   const [editTicket,    setEditTicket]    = useState(null)
 
   const PER_PAGE    = 10
-  const STATUS_TABS = ['All', 'Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed']
+  const STATUS_TABS = [ 'Open', 'Assigned', 'In Progress', 'Waiting User', 'Resolved', 'Closed', 'All' ]
 
   useEffect(() => {
     const isModalOpen = showNew || !!deleteTicket || !!editTicket
