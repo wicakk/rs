@@ -7,6 +7,30 @@ const getHeaders = () => ({
   Authorization: `Bearer ${localStorage.getItem('token')}`,
 })
 
+// ── Helper: parse response dengan aman ──────────────────────────
+// Menghindari crash "Unexpected token '<'..." saat server membalas
+// HTML (session expired / salah proxy / 500 debug page) alih-alih JSON.
+async function parseJson(res) {
+  const text = await res.text()
+  let json
+  try {
+    json = text ? JSON.parse(text) : {}
+  } catch {
+    if (res.status === 401) {
+      throw new Error('Sesi login sudah habis. Silakan login ulang.')
+    }
+    throw new Error(
+      `Server tidak mengembalikan JSON (status ${res.status}). ` +
+      `Kemungkinan endpoint API salah, proxy server belum benar, atau terjadi error 500 di backend. ` +
+      `Cek tab Network di browser untuk melihat response mentahnya.`
+    )
+  }
+  if (!res.ok && json.success === undefined) {
+    throw new Error(json.message || `Request gagal (status ${res.status}).`)
+  }
+  return json
+}
+
 export default function useProjects() {
   const [projects,   setProjects]   = useState([])
   const [project,    setProject]    = useState(null)   // detail 1 project
@@ -18,7 +42,7 @@ export default function useProjects() {
     setLoading(true); setError(null)
     try {
       const res  = await fetch('/api/projects', { headers: getHeaders() })
-      const json = await res.json()
+      const json = await parseJson(res)
       if (!json.success) throw new Error(json.message)
       setProjects(json.data)
     } catch (e) { setError(e.message) }
@@ -30,7 +54,7 @@ export default function useProjects() {
     setLoading(true); setError(null)
     try {
       const res  = await fetch(`/api/projects/${id}`, { headers: getHeaders() })
-      const json = await res.json()
+      const json = await parseJson(res)
       if (!json.success) throw new Error(json.message)
       setProject(json.data)
       return json.data
@@ -43,7 +67,7 @@ export default function useProjects() {
     const res  = await fetch('/api/projects', {
       method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
     })
-    const json = await res.json()
+    const json = await parseJson(res)
     if (!json.success) throw new Error(json.message || Object.values(json.errors ?? {}).flat()[0])
     setProjects(p => [json.data, ...p])
     return json.data
@@ -54,7 +78,7 @@ export default function useProjects() {
     const res  = await fetch(`/api/projects/${id}`, {
       method: 'PUT', headers: getHeaders(), body: JSON.stringify(data),
     })
-    const json = await res.json()
+    const json = await parseJson(res)
     if (!json.success) throw new Error(json.message)
     setProjects(p => p.map(x => x.id === id ? json.data : x))
     if (project?.id === id) setProject(json.data)
@@ -66,7 +90,7 @@ export default function useProjects() {
     const res  = await fetch(`/api/projects/${id}`, {
       method: 'DELETE', headers: getHeaders(),
     })
-    const json = await res.json()
+    const json = await parseJson(res)
     if (!json.success) throw new Error(json.message)
     setProjects(p => p.filter(x => x.id !== id))
   }, [])
@@ -76,7 +100,7 @@ export default function useProjects() {
     const res  = await fetch(`/api/projects/${projectId}/members`, {
       method: 'PUT', headers: getHeaders(), body: JSON.stringify({ member_ids: memberIds }),
     })
-    const json = await res.json()
+    const json = await parseJson(res)
     if (!json.success) throw new Error(json.message)
     setProject(prev => prev ? { ...prev, members: json.data } : prev)
     return json.data
@@ -87,7 +111,7 @@ export default function useProjects() {
     const res  = await fetch(`/api/projects/${projectId}/tasks`, {
       method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
     })
-    const json = await res.json()
+    const json = await parseJson(res)
     if (!json.success) throw new Error(json.message || Object.values(json.errors ?? {}).flat()[0])
     // Inject task ke kolom yang sesuai
     setProject(prev => {
@@ -108,7 +132,7 @@ export default function useProjects() {
     const res  = await fetch(`/api/projects/${projectId}/tasks/${taskId}`, {
       method: 'PUT', headers: getHeaders(), body: JSON.stringify(data),
     })
-    const json = await res.json()
+    const json = await parseJson(res)
     if (!json.success) throw new Error(json.message)
     // Update task di semua kolom
     setProject(prev => {
@@ -128,7 +152,7 @@ export default function useProjects() {
     const res  = await fetch(`/api/projects/${projectId}/tasks/${taskId}`, {
       method: 'DELETE', headers: getHeaders(),
     })
-    const json = await res.json()
+    const json = await parseJson(res)
     if (!json.success) throw new Error(json.message)
     setProject(prev => {
       if (!prev) return prev
