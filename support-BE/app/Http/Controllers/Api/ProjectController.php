@@ -135,7 +135,7 @@ class ProjectController extends Controller
             'color'       => 'nullable|string|max:7',
             'status'      => 'nullable|in:active,on_hold,completed,cancelled',
             'start_date'  => 'nullable|date',
-            'due_date'    => 'nullable|date',
+            'due_date'    => 'nullable|date|after_or_equal:start_date',
             'member_ids'  => 'nullable|array',
             'member_ids.*'=> 'exists:users,id',
         ]);
@@ -212,6 +212,16 @@ class ProjectController extends Controller
             'start_date'  => 'nullable|date',
             'due_date'    => 'nullable|date',
         ]);
+
+        $start = $validated['start_date'] ?? $project->start_date;
+        $due   = $validated['due_date']   ?? $project->due_date;
+        if ($start && $due && \Carbon\Carbon::parse($start)->gt(\Carbon\Carbon::parse($due))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tanggal mulai tidak boleh setelah deadline.',
+                'errors'  => ['due_date' => ['Deadline tidak boleh sebelum tanggal mulai.']],
+            ], 422);
+        }
 
         $project->update($validated);
 

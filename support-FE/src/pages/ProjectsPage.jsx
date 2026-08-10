@@ -34,6 +34,7 @@ function ProjectFormModal({ project, users, onClose, onSave, loading, theme }) {
     priority:    project?.priority    ?? 'medium',
     color:       project?.color       ?? '#6366f1',
     status:      project?.status      ?? 'active',
+    start_date:  project?.start_date  ?? '',
     due_date:    project?.due_date    ?? '',
     member_ids:  project?.members?.map(m=>m.id) ?? [],
   })
@@ -42,6 +43,19 @@ function ProjectFormModal({ project, users, onClose, onSave, loading, theme }) {
   const fileRef           = useRef(null)
 
   const set = k => e => { setForm(f=>({...f,[k]:e.target.value})); setErr(p=>({...p,[k]:null})) }
+
+  const setDate = k => e => {
+    const value = e.target.value
+    setForm(f => {
+      const next = { ...f, [k]: value }
+      if (next.start_date && next.due_date && new Date(next.start_date) > new Date(next.due_date)) {
+        setErr({ start_date:'Tanggal mulai tidak boleh setelah deadline', due_date:'Deadline tidak boleh sebelum tanggal mulai' })
+      } else {
+        setErr(p => ({ ...p, start_date:null, due_date:null }))
+      }
+      return next
+    })
+  }
   const toggle = id => setForm(f=>({ ...f, member_ids: f.member_ids.includes(id) ? f.member_ids.filter(x=>x!==id) : [...f.member_ids, id] }))
 
   const handleFiles = e => {
@@ -148,17 +162,25 @@ function ProjectFormModal({ project, users, onClose, onSave, loading, theme }) {
             </div>
           </div>
 
-          {/* Status + Deadline */}
+          {/* Status */}
+          <div>
+            <label style={lbl(theme)}>Status</label>
+            <select value={form.status} onChange={set('status')} style={inp(theme)}>
+              {Object.entries(STATUS_CFG).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+
+          {/* Tanggal Mulai + Deadline */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
             <div>
-              <label style={lbl(theme)}>Status</label>
-              <select value={form.status} onChange={set('status')} style={inp(theme)}>
-                {Object.entries(STATUS_CFG).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-              </select>
+              <label style={lbl(theme)}>Tanggal Mulai</label>
+              <input type="date" value={form.start_date} onChange={setDate('start_date')} max={form.due_date || undefined} style={inp(theme, err.start_date)}/>
+              {err.start_date && <div style={{ fontSize:11, color:theme.danger, marginTop:4 }}>{err.start_date}</div>}
             </div>
             <div>
               <label style={lbl(theme)}>Deadline</label>
-              <input type="date" value={form.due_date} onChange={set('due_date')} style={inp(theme)}/>
+              <input type="date" value={form.due_date} onChange={setDate('due_date')} min={form.start_date || undefined} style={inp(theme, err.due_date)}/>
+              {err.due_date && <div style={{ fontSize:11, color:theme.danger, marginTop:4 }}>{err.due_date}</div>}
             </div>
           </div>
 
@@ -188,7 +210,16 @@ function ProjectFormModal({ project, users, onClose, onSave, loading, theme }) {
         {/* Footer */}
         <div style={{ display:'flex', justifyContent:'flex-end', gap:8, padding:'12px 20px', borderTop:`1px solid ${theme.border}`, flexShrink:0 }}>
           <button onClick={onClose} disabled={loading} style={{ padding:'8px 16px', borderRadius:8, border:`1px solid ${theme.border}`, background:'transparent', color:theme.textMuted, fontSize:13, cursor:'pointer' }}>Batal</button>
-          <button onClick={()=>{ if(!form.name.trim()){ setErr({name:'Wajib diisi'}); return } onSave(form, files) }} disabled={loading}
+          <button onClick={()=>{
+            const newErr = {}
+            if(!form.name.trim()) newErr.name = 'Wajib diisi'
+            if(form.start_date && form.due_date && new Date(form.start_date) > new Date(form.due_date)) {
+              newErr.start_date = 'Tanggal mulai tidak boleh setelah deadline'
+              newErr.due_date   = 'Deadline tidak boleh sebelum tanggal mulai'
+            }
+            if(Object.keys(newErr).length){ setErr(newErr); return }
+            onSave(form, files)
+          }} disabled={loading}
             style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, background:form.color, color:'#fff', border:'none', fontSize:13, fontWeight:600, cursor:loading?'not-allowed':'pointer', opacity:loading?0.7:1 }}>
             <Save size={13}/>{loading?'Menyimpan...':isEdit?'Simpan':'Buat Project'}
           </button>
