@@ -15,10 +15,10 @@ class Task extends Model
 
     protected $fillable = [
         'project_id','column_id','title','description','category',
-        'priority','assigned_to','created_by','due_date','position',
+        'priority','assigned_to','created_by','start_date','due_date','position',
     ];
 
-    protected $casts = ['due_date' => 'datetime'];
+    protected $casts = ['start_date' => 'date', 'due_date' => 'datetime'];
 
     public function project(): BelongsTo   { return $this->belongsTo(Project::class); }
     public function column(): BelongsTo    { return $this->belongsTo(TaskColumn::class, 'column_id'); }

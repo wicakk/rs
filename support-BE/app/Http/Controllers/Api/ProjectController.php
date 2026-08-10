@@ -278,8 +278,18 @@ class ProjectController extends Controller
             'assigned_to'  => 'nullable|exists:users,id',
             'assignee_ids' => 'nullable|array',
             'assignee_ids.*'=> 'exists:users,id',
+            'start_date'   => 'nullable|date',
             'due_date'     => 'nullable|date',
         ]);
+
+        if ($request->filled('start_date') && $request->filled('due_date')
+            && \Carbon\Carbon::parse($request->start_date)->gt(\Carbon\Carbon::parse($request->due_date))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tanggal mulai tidak boleh setelah due date.',
+                'errors'  => ['due_date' => ['Due date tidak boleh sebelum tanggal mulai.']],
+            ], 422);
+        }
 
         if (!empty($validated['assignee_ids'])) {
             $validated['assigned_to'] = $validated['assignee_ids'][0];
@@ -294,6 +304,7 @@ class ProjectController extends Controller
             'column_id'   => $validated['column_id'],
             'priority'    => $validated['priority'] ?? 'medium',
             'assigned_to' => $validated['assigned_to'] ?? null,
+            'start_date'  => $validated['start_date'] ?? null,
             'due_date'    => $validated['due_date'] ?? null,
             'project_id'  => $project->id,
             'created_by'  => $request->user()->id,
@@ -333,9 +344,20 @@ class ProjectController extends Controller
             'assigned_to'  => 'nullable|exists:users,id',
             'assignee_ids' => 'nullable|array',
             'assignee_ids.*'=> 'exists:users,id',
+            'start_date'   => 'nullable|date',
             'due_date'     => 'nullable|date',
             'position'     => 'nullable|integer',
         ]);
+
+        $checkStart = $validated['start_date'] ?? $task->start_date;
+        $checkDue   = $validated['due_date']   ?? $task->due_date;
+        if ($checkStart && $checkDue && \Carbon\Carbon::parse($checkStart)->gt(\Carbon\Carbon::parse($checkDue))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tanggal mulai tidak boleh setelah due date.',
+                'errors'  => ['due_date' => ['Due date tidak boleh sebelum tanggal mulai.']],
+            ], 422);
+        }
 
         $userId = $request->user()->id;
 

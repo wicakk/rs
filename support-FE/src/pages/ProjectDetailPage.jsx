@@ -52,11 +52,25 @@ function TaskFormModal({ task, columns, members, defaultColumnId, onClose, onSav
     column_id:    String(task?.column_id ?? defaultColumnId ?? columns[0]?.id ?? ''),
     priority:     task?.priority    ?? 'medium',
     assignee_ids: initIds(),
+    start_date:   task?.start_date  ?? '',
     due_date:     task?.due_date ? task.due_date.split('T')[0] : '',
     due_time:     task?.due_time ?? (task?.due_date?.includes('T') ? task.due_date.split('T')[1]?.slice(0,5) : ''),
   })
   const [err, setErr] = useState({})
   const set = k => e => { setForm(f=>({...f,[k]:e.target.value})); setErr(p=>({...p,[k]:null})) }
+
+  const setDate = k => e => {
+    const value = e.target.value
+    setForm(f => {
+      const next = { ...f, [k]: value }
+      if (next.start_date && next.due_date && new Date(next.start_date) > new Date(next.due_date)) {
+        setErr(p => ({ ...p, start_date:'Tanggal mulai tidak boleh setelah due date', due_date:'Due date tidak boleh sebelum tanggal mulai' }))
+      } else {
+        setErr(p => ({ ...p, start_date:null, due_date:null }))
+      }
+      return next
+    })
+  }
 
   const toggleAssignee = (id) => setForm(f => ({
     ...f,
@@ -67,11 +81,16 @@ function TaskFormModal({ task, columns, members, defaultColumnId, onClose, onSav
 
   const handleSave = () => {
     if (!form.title.trim()) { setErr({ title:'Wajib diisi' }); return }
+    if (form.start_date && form.due_date && new Date(form.start_date) > new Date(form.due_date)) {
+      setErr({ start_date:'Tanggal mulai tidak boleh setelah due date', due_date:'Due date tidak boleh sebelum tanggal mulai' })
+      return
+    }
     onSave({
       ...form,
       column_id:    Number(form.column_id),
       assignee_ids: form.assignee_ids,
       assigned_to:  form.assignee_ids[0] ?? null, // backward compat
+      start_date:   form.start_date || null,
       due_date:     form.due_date
         ? (form.due_time ? `${form.due_date} ${form.due_time}:00` : form.due_date)
         : null,
@@ -172,10 +191,17 @@ function TaskFormModal({ task, columns, members, defaultColumnId, onClose, onSav
             )}
           </div>
 
+          <div>
+            <label style={lbl(theme)}>Tanggal Mulai</label>
+            <input type="date" value={form.start_date} onChange={setDate('start_date')} max={form.due_date || undefined} style={inp(theme, err.start_date)}/>
+            {err.start_date && <div style={{ fontSize:11, color:theme.danger, marginTop:4 }}>{err.start_date}</div>}
+          </div>
+
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
             <div>
               <label style={lbl(theme)}>Due Date</label>
-              <input type="date" value={form.due_date} onChange={set('due_date')} style={inp(theme)}/>
+              <input type="date" value={form.due_date} onChange={setDate('due_date')} min={form.start_date || undefined} style={inp(theme, err.due_date)}/>
+              {err.due_date && <div style={{ fontSize:11, color:theme.danger, marginTop:4 }}>{err.due_date}</div>}
             </div>
             <div>
               <label style={lbl(theme)}>Due Time</label>
