@@ -8,9 +8,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Semua request /api/... diteruskan ke Laravel
       '/api': {
-        target: 'http://localhost:8000',   // ← sesuaikan port Laravel kamu
+        target: 'http://localhost:8000', 
         changeOrigin: true,
         secure: false,
       },

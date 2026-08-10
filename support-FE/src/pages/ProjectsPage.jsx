@@ -40,6 +40,9 @@ function ProjectFormModal({ project, users, onClose, onSave, loading, theme }) {
   })
   const [err, setErr]     = useState({})
   const [files, setFiles] = useState([])
+  const [memberQuery, setMemberQuery] = useState('')
+  const [memberPage, setMemberPage]   = useState(1)
+  const MEMBER_PAGE_SIZE = 6
   const fileRef           = useRef(null)
 
   const set = k => e => { setForm(f=>({...f,[k]:e.target.value})); setErr(p=>({...p,[k]:null})) }
@@ -57,6 +60,14 @@ function ProjectFormModal({ project, users, onClose, onSave, loading, theme }) {
     })
   }
   const toggle = id => setForm(f=>({ ...f, member_ids: f.member_ids.includes(id) ? f.member_ids.filter(x=>x!==id) : [...f.member_ids, id] }))
+
+  const filteredUsers = users.filter(u => {
+    const q = memberQuery.trim().toLowerCase()
+    if (!q) return true
+    return (u.name??'').toLowerCase().includes(q) || (u.email??'').toLowerCase().includes(q)
+  })
+  const memberTotalPages = Math.max(1, Math.ceil(filteredUsers.length / MEMBER_PAGE_SIZE))
+  const pagedUsers = filteredUsers.slice((memberPage-1)*MEMBER_PAGE_SIZE, memberPage*MEMBER_PAGE_SIZE)
 
   const handleFiles = e => {
     const picked = Array.from(e.target.files ?? [])
@@ -188,8 +199,17 @@ function ProjectFormModal({ project, users, onClose, onSave, loading, theme }) {
           {users.length > 0 && (
             <div>
               <label style={lbl(theme)}>Member ({form.member_ids.length} dipilih)</label>
-              <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:180, overflowY:'auto' }}>
-                {users.map(u=>{
+              <input
+                value={memberQuery}
+                onChange={e=>{ setMemberQuery(e.target.value); setMemberPage(1) }}
+                placeholder="Cari nama atau email member..."
+                style={{ ...inp(theme), marginBottom:8 }}
+              />
+              <div style={{ display:'flex', flexDirection:'column', gap:4, minHeight:pagedUsers.length?undefined:60 }}>
+                {pagedUsers.length===0 && (
+                  <div style={{ fontSize:12, color:theme.textMuted, textAlign:'center', padding:'16px 0' }}>Tidak ada user ditemukan</div>
+                )}
+                {pagedUsers.map(u=>{
                   const sel = form.member_ids.includes(u.id)
                   return (
                     <label key={u.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:8, border:`1px solid ${sel?theme.accent+'55':theme.border}`, background:sel?`${theme.accent}0d`:'transparent', cursor:'pointer' }}>
@@ -203,6 +223,19 @@ function ProjectFormModal({ project, users, onClose, onSave, loading, theme }) {
                   )
                 })}
               </div>
+              {memberTotalPages > 1 && (
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8 }}>
+                  <button type="button" onClick={()=>setMemberPage(p=>Math.max(1,p-1))} disabled={memberPage===1}
+                    style={{ padding:'4px 10px', borderRadius:6, border:`1px solid ${theme.border}`, background:'transparent', color:theme.textMuted, fontSize:11, cursor:memberPage===1?'not-allowed':'pointer', opacity:memberPage===1?0.5:1 }}>
+                    Sebelumnya
+                  </button>
+                  <span style={{ fontSize:11, color:theme.textMuted }}>Halaman {memberPage} dari {memberTotalPages}</span>
+                  <button type="button" onClick={()=>setMemberPage(p=>Math.min(memberTotalPages,p+1))} disabled={memberPage===memberTotalPages}
+                    style={{ padding:'4px 10px', borderRadius:6, border:`1px solid ${theme.border}`, background:'transparent', color:theme.textMuted, fontSize:11, cursor:memberPage===memberTotalPages?'not-allowed':'pointer', opacity:memberPage===memberTotalPages?0.5:1 }}>
+                    Berikutnya
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -355,7 +388,7 @@ export default function ProjectsPage() {
 
   useEffect(()=>{
     fetchProjects()
-    fetch('/api/users',{ headers:{ Accept:'application/json', Authorization:`Bearer ${localStorage.getItem('token')}` } })
+    fetch('/api/users?all=true',{ headers:{ Accept:'application/json', Authorization:`Bearer ${localStorage.getItem('token')}` } })
       .then(r=>r.json()).then(j=>setUsers(j.data??[]))
 
     // Refresh saat user kembali ke halaman ini (dari detail page)
