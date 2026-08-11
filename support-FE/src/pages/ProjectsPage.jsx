@@ -358,7 +358,7 @@ function ProjectCard({ project, onEdit, onDelete, canManage, theme, onClick }) {
                 <Calendar size={10}/>{fmtDate(project.due_date)}
               </div>
             )}
-            <div style={{ fontSize:9, color:theme.textMuted, marginTop:1 }}>{fmtDateTime(project.created_at)}</div>
+            <div style={{ fontSize:9, color:theme.textMuted, marginTop:1 }}>{project.start_date ? fmtDate(project.start_date) : fmtDateTime(project.created_at)}</div>
           </div>
         </div>
       </div>
