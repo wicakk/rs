@@ -18,7 +18,7 @@ class Task extends Model
         'priority','assigned_to','created_by','start_date','due_date','position',
     ];
 
-    protected $casts = ['start_date' => 'date', 'due_date' => 'datetime'];
+    protected $casts = ['start_date' => 'datetime', 'due_date' => 'datetime'];
 
     public function project(): BelongsTo   { return $this->belongsTo(Project::class); }
     public function column(): BelongsTo    { return $this->belongsTo(TaskColumn::class, 'column_id'); }

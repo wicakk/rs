@@ -52,7 +52,8 @@ function TaskFormModal({ task, columns, members, defaultColumnId, onClose, onSav
     column_id:    String(task?.column_id ?? defaultColumnId ?? columns[0]?.id ?? ''),
     priority:     task?.priority    ?? 'medium',
     assignee_ids: initIds(),
-    start_date:   task?.start_date  ?? '',
+    start_date:   task?.start_date ? task.start_date.split('T')[0] : '',
+    start_time:   task?.start_time ?? (task?.start_date?.includes('T') ? task.start_date.split('T')[1]?.slice(0,5) : ''),
     due_date:     task?.due_date ? task.due_date.split('T')[0] : '',
     due_time:     task?.due_time ?? (task?.due_date?.includes('T') ? task.due_date.split('T')[1]?.slice(0,5) : ''),
   })
@@ -90,7 +91,9 @@ function TaskFormModal({ task, columns, members, defaultColumnId, onClose, onSav
       column_id:    Number(form.column_id),
       assignee_ids: form.assignee_ids,
       assigned_to:  form.assignee_ids[0] ?? null, // backward compat
-      start_date:   form.start_date || null,
+      start_date:   form.start_date
+        ? (form.start_time ? `${form.start_date} ${form.start_time}:00` : form.start_date)
+        : null,
       due_date:     form.due_date
         ? (form.due_time ? `${form.due_date} ${form.due_time}:00` : form.due_date)
         : null,
@@ -191,10 +194,16 @@ function TaskFormModal({ task, columns, members, defaultColumnId, onClose, onSav
             )}
           </div>
 
-          <div>
-            <label style={lbl(theme)}>Tanggal Mulai</label>
-            <input type="date" value={form.start_date} onChange={setDate('start_date')} max={form.due_date || undefined} style={inp(theme, err.start_date)}/>
-            {err.start_date && <div style={{ fontSize:11, color:theme.danger, marginTop:4 }}>{err.start_date}</div>}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div>
+              <label style={lbl(theme)}>Tanggal Mulai</label>
+              <input type="date" value={form.start_date} onChange={setDate('start_date')} max={form.due_date || undefined} style={inp(theme, err.start_date)}/>
+              {err.start_date && <div style={{ fontSize:11, color:theme.danger, marginTop:4 }}>{err.start_date}</div>}
+            </div>
+            <div>
+              <label style={lbl(theme)}>Waktu Mulai</label>
+              <input type="time" value={form.start_time} onChange={set('start_time')} style={inp(theme)}/>
+            </div>
           </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
